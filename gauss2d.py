@@ -146,7 +146,7 @@ class Gauss2D(object):
         #return something in case everything is really fucked
         return -1 #should NEVER see this
 
-    def optimize_params_ls(self, guess_params = None, modeltype = 'full'):
+    def optimize_params_ls(self, guess_params = None, modeltype = 'norot'):
         '''
         A function that will optimize the parameters for a 2D Gaussian model
         using a least squares method
@@ -169,12 +169,11 @@ class Gauss2D(object):
             #if not we generate them
             guess_params = self.estimate_params()
             if modeltype.lower() == 'sym':
-                guess_params = np.delete(guess_params,5)
-            elif modeltype.lower() == 'norot':
                 guess_params = np.delete(guess_params,(4,5))
-        #if yes we save them to the object for later use
-        else:
-            self._guess_params = guess_params
+            elif modeltype.lower() == 'norot':
+                guess_params = np.delete(guess_params,5)
+
+        self._guess_params = guess_params
 
         #pull the data attribute for use
         data = self._data
