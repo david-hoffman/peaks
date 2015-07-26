@@ -171,7 +171,28 @@ class Gauss2D(object):
 
         return self.model(xdata_tuple, *args)
 
-    def optimize_params_ls(self, guess_params = None, modeltype = 'full'):
+    def area(self,**kwargs):
+        '''
+        A function for calculating the area of the model peak
+        '''
+
+        if self._opt_params is None:
+            self.optimize_params_ls(**kwargs)
+
+        opt_params = self._opt_params
+
+        if opt_params[0] > 0:
+            num_params = len(opt_params)
+            if num_params == 7:
+                return abs(2*np.pi*opt_params[0]*opt_params[3]*opt_params[4]*np.sqrt(1-opt_params[5]**2))
+            elif num_params == 6:
+                return abs(2*np.pi*opt_params[0]*opt_params[3]*opt_params[4])
+            else:
+                return abs(2*np.pi*opt_params[0]*opt_params[3]**2)
+        else:
+            return 0
+
+    def optimize_params_ls(self, guess_params = None, modeltype = 'norot'):
         '''
         A function that will optimize the parameters for a 2D Gaussian model
         using a least squares method
@@ -216,20 +237,23 @@ class Gauss2D(object):
 
         #Here we fit the data but we catch any errors and instead set the
         #optimized parameters to zero.
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", OptimizeWarning)
-            try:
-                popt, pcov = curve_fit(model_ravel, (xx, yy), data.ravel(), p0=guess_params)
-            except (OptimizeWarning, ValueError, RuntimeError):
-                popt = np.zeros_like(guess_params)
+        # with warnings.catch_warnings():
+        #     warnings.simplefilter("error", OptimizeWarning)
+        try:
+            popt, pcov = curve_fit(model_ravel, (xx, yy), data.ravel(), p0=guess_params)
+        except (ValueError, RuntimeError) as e:
+            warnings.warn(e.args)
+            popt = np.zeros_like(guess_params)
+        else:
+            max_s = max(data.shape)
+            if len(popt) < 6:
+                if popt[3] > max_s:
+                    warnings.warn('Sigma larger than ROI')
+                    popt = np.zeros_like(guess_params)
             else:
-                max_s = max(data.shape)
-                if len(popt) < 6:
-                    if popt[3] > max_s:
-                        popt = np.zeros_like(guess_params)
-                else:
-                    if popt[3] > max_s or popt[4] > max_s:
-                        popt = np.zeros_like(guess_params)
+                if popt[3] > max_s or popt[4] > max_s:
+                    warnings.warn('Sigma larger than ROI')
+                    popt = np.zeros_like(guess_params)
 
         #save parameters for later use
         self._opt_params = popt
@@ -261,7 +285,7 @@ class Gauss2D(object):
         params = np.zeros(7)
 
         #pull data from the object for easier use
-        data = self._data
+        data = self._data.astype(float)
 
         #calculate the moments up to second order
         M = moments(data, 2)
