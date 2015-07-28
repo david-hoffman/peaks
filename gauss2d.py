@@ -1,9 +1,13 @@
-#A module for generating and fitting 2D gaussian data
+#Copyright David P. Hoffman
+
+'''
+Class for generating and fitting 2D Gaussian peaks
+'''
 
 #numpy for numerical
 import numpy as np
 #need measure to take image moments
-from skimage.measure import moments, moments_central
+from skimage.measure import moments
 #need basic curve fitting
 from scipy.optimize import curve_fit
 
@@ -45,9 +49,48 @@ class Gauss2D(object):
         self._opt_params = None
         self._angle = None
 
-    #################################
-    #   STATIC METHOD DEFINITIONS   #
-    #################################
+    ########################
+    # PROPERTY DEFINITIONS #
+    ########################
+
+    @property
+    def data(self):
+        '''
+        Optimized parameters from the fit
+        '''
+
+        #This attribute should be read-only, which means that it should return
+        #a copy of the data not a pointer.
+        return self._data
+
+    @property
+    def opt_params(self):
+        '''
+        Optimized parameters from the fit
+        '''
+
+        #This attribute should be read-only, which means that it should return
+        #a copy of the data not a pointer.
+        return self._opt_params.copy()
+
+    def guess_params():
+        '''
+        Guess parameters for fitting.
+        '''
+
+        def fget(self):
+            return self._guess_params
+        def fset(self, value):
+            #should have error checking on parameters here
+            self._guess_params = value
+        def fdel(self):
+            self._guess_params = None
+        return locals()
+    guess_params = property(**guess_params())
+
+    #############################
+    # STATIC METHOD DEFINITIONS #
+    #############################
     @classmethod
     def gauss2D(cls, xdata_tuple, amp, mu0, mu1, sigma0, sigma1, rho, offset):
         '''
@@ -211,6 +254,7 @@ class Gauss2D(object):
         '''
 
         #Test if we've been provided guess parameters
+        #Need to test if the variable is good or not.
         if guess_params is None:
             #if not we generate them
             guess_params = self.estimate_params()
@@ -311,30 +355,6 @@ class Gauss2D(object):
         #return parameters to the caller as a `copy`, we don't want them to
         #change the internal state
         return params.copy()
-
-    def get_guess_params(self):
-        '''
-        Returns a copy of _guess_params so that user doesn't unwittingly change
-        internal state
-
-        Returns
-        -------
-        guess_params : array_like
-            A copy of the objects internal estimated parameters for the model
-        '''
-        return self._guess_params.copy()
-
-    def get_opt_params(self):
-        '''
-        Returns a copy of _opt_params so that user doesn't unwittingly change
-        internal state
-
-        Returns
-        -------
-        guess_params : array_like
-            A copy of the objects internal estimated parameters for the model
-        '''
-        return self._opt_params.copy()
 
     def optimize_params_mle(self):
         print('This function has not been implemented yet, passing to\
