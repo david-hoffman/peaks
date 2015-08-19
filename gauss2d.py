@@ -11,6 +11,8 @@ from skimage.measure import moments
 #need basic curve fitting
 from scipy.optimize import curve_fit
 
+from .util import detrend
+
 import warnings
 from scipy.optimize import OptimizeWarning
 
@@ -25,7 +27,7 @@ class Gauss2D(object):
 
     Right now the class assumes that `data` has constant spacing
     """
-    def __init__(self, data):
+    def __init__(self, data, **kwargs):
         '''
         Holds experimental equi-spaced 2D-data best represented by a Gaussian
 
@@ -46,9 +48,10 @@ class Gauss2D(object):
         #so DO NOT modify this field
         self._data = data
         self._guess_params = None
-        self._opt_params = None
-        self._pcov = None
-        self._angle = None
+        self._popt = None
+        #self._pcov = None
+        #self._angle = None
+        super().__init__(**kwargs)
 
     ########################
     # PROPERTY DEFINITIONS #
@@ -72,7 +75,7 @@ class Gauss2D(object):
 
         #This attribute should be read-only, which means that it should return
         #a copy of the data not a pointer.
-        return self._opt_params.copy()
+        return self._popt.copy()
 
     @property
     def pcov(self):
@@ -83,6 +86,13 @@ class Gauss2D(object):
         #This attribute should be read-only, which means that it should return
         #a copy of the data not a pointer.
         return self._pcov.copy()
+
+    @property
+    def error(self):
+        if self.ier in [1, 2, 3, 4]:
+            return False
+        else:
+            return True
 
     def guess_params():
         '''
@@ -144,7 +154,8 @@ class Gauss2D(object):
             #All functions assume that data is 2D
             raise ValueError
 
-        z =((x0-mu0)/sigma0)**2 - 2*rho*(x0-mu0)*(x1-mu1)/(sigma0*sigma1) + ((x1-mu1)/sigma1)**2
+        z =((x0-mu0)/sigma0)**2 - 2*rho*(x0-mu0)*(x1-mu1)/(sigma0*sigma1) +\
+         ((x1-mu1)/sigma1)**2
 
         g = offset + amp*np.exp( -z/(2*(1-rho**2)))
         return g
@@ -231,7 +242,7 @@ class Gauss2D(object):
         A function for calculating the area of the model peak
         '''
 
-        if self._opt_params is None:
+        if self._popt is None:
             self.optimize_params_ls(**kwargs)
 
         opt_params = self.opt_params
@@ -244,7 +255,8 @@ class Gauss2D(object):
         else:
             return abs(2*np.pi*opt_params[0]*opt_params[3]**2)
 
-    def optimize_params_ls(self, guess_params = None, modeltype = 'norot'):
+    def optimize_params_ls(self, guess_params = None, modeltype = 'norot',\
+                            quiet = False, check_params = True):
         '''
         A function that will optimize the parameters for a 2D Gaussian model
         using a least squares method
@@ -289,36 +301,99 @@ class Gauss2D(object):
         def model_ravel(*args) : return self.model(*args).ravel()
 
         #Here we fit the data but we catch any errors and instead set the
-        #optimized parameters to zero.
-        # with warnings.catch_warnings():
-        #     warnings.simplefilter("error", OptimizeWarning)
+        #optimized parameters to nan.
 
-        #Need a better way to propagate errors through program.
-        try:
-            popt, pcov = curve_fit(model_ravel, (xx, yy), data.ravel(), p0=guess_params)
-        except (ValueError, RuntimeError) as e:
-            warnings.warn(e.args, UserWarning)
-            popt = np.zeros_like(guess_params)
-            pcov = np.zeros_like(guess_params)
-        else:
-            max_s = max(data.shape)
-            if len(popt) < 6:
-                if popt[3] > max_s:
-                    warnings.warn('Sigma larger than ROI', UserWarning)
-                    popt = np.zeros_like(guess_params)
-                    pcov = np.zeros_like(guess_params)
+        #full_output is an undocumented key word of `curve_fit` if set to true
+        #it returns the same output as leastsq's would, if False, as it is by
+        #default it returns only popt and pcov.
+
+        #we can use the full output to determine wether the fit was successful
+        #or not. This will also allow for easier integration once MLE fitting is
+        #implemented
+        with warnings.catch_warnings():
+            #we'll catch this error later and alert the user with a printout
+            warnings.simplefilter("ignore", OptimizeWarning)
+
+            try:
+                popt, pcov, infodict, errmsg, ier= curve_fit(model_ravel, (xx, yy),\
+                                data.ravel(), p0=guess_params, full_output=True)
+            except RuntimeError as e:
+                #print(e)
+                #now we need to re-parse the error message to set all the flags
+                #pull the message
+                self.errmsg = e.args[0].replace('Optimal parameters not found: ','')
+
+                #run through possibilities for failure
+                errors = {0: "Improper",
+                  5: "maxfev",
+                  6: "ftol",
+                  7: "xtol",
+                  8: "gtol",
+                  'unknown': "Unknown"}
+
+                #set the error flag correctly
+                for k, v in errors.items():
+                    if v in self.errmsg:
+                        self.ier = k
+
             else:
-                if popt[3] > max_s or popt[4] > max_s:
-                    warnings.warn('Sigma larger than ROI', UserWarning)
-                    popt = np.zeros_like(guess_params)
-                    pcov = np.zeros_like(guess_params)
+                #if we save the infodict as well then we'll start using a lot of
+                #memory
+                #self.infodict = infodict
+                self.errmsg = errmsg
+                self.ier = ier
+
+                if check_params:
+                    self._check_params(popt)
+
+                #check to see if the covariance is bunk
+                if not np.isfinite(pcov).all():
+                    self.errmsg = 'Covariance of the parameters could not be estimated'
+                    self.ier = 9
 
         #save parameters for later use
-        self._opt_params = popt
-        self._pcov = pcov
+        #if the error flag is good, proceed
+        if self.ier in [1, 2, 3, 4]:
+            self._popt = popt
+            self._pcov = pcov
+        else:
+            if not quiet:
+                print('Fitting error: ' + self.errmsg)
+
+            self._popt = guess_params*np.nan
+            self._pcov = np.zeros((len(guess_params),len(guess_params)))*np.nan
 
         #return copy to user
-        return popt.copy()
+        return self.opt_params
+
+    def _check_params(self, popt):
+        '''
+        A method that checks if optimized parameters are valid sets the fit flag
+        '''
+        data = self.data
+
+        #check to see if the gaussian is bigger than its fitting window by a
+        #large amount, generally the user is advised to enlarge the fitting
+        #window or disregard the results of the fit.
+        sigma_msg = 'Sigma larger than ROI'
+
+        max_s = max(data.shape)
+
+        if len(popt) < 6:
+            if abs(popt[3]) > max_s:
+                self.errmsg = sigma_msg
+                self.ier = 10
+        else:
+            if abs(popt[3]) > max_s or abs(popt[4]) > max_s:
+                self.errmsg = sigma_msg
+                self.ier = 10
+
+        #check to see if the amplitude makes sense
+        #it must be greater than 0 but it can't be too much larger than the
+        #entire range of data values
+        if not (0 < popt[0] < (data.max() - data.min())*5):
+             self.errmsg = "Amplitude unphysical"
+             self.ier = 11
 
     def estimate_params(self):
         '''
@@ -344,7 +419,8 @@ class Gauss2D(object):
         params = np.zeros(7)
 
         #pull data from the object for easier use
-        data = self._data.astype(float)
+        data, bg = detrend(self._data)
+        offset = bg.mean()
 
         #calculate the moments up to second order
         M = moments(data, 2)
@@ -358,11 +434,11 @@ class Gauss2D(object):
         covar = M[1,1]/M[0,0]-xbar*ybar
 
         #place the model parameters in the return array
-        params[:3] = data.max(), xbar, ybar
+        params[:3] = data.max()+offset, xbar, ybar
         params[3] = np.sqrt(np.abs(xvar))
         params[4] = np.sqrt(np.abs(yvar))
         params[5] = covar/np.sqrt(np.abs(xvar*yvar))
-        params[6] = data.min()
+        params[6] = offset
 
         #save estimate for later use
         self._guess_params = params
