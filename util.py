@@ -2,7 +2,7 @@ import numpy as np
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn import linear_model
 
-def detrend_data(data, degree = 1):
+def detrend(data, degree = 1):
     '''
     Take 2D (i.e. image) data and remove the background using a polynomial fit
 
@@ -17,8 +17,8 @@ def detrend_data(data, degree = 1):
 
     Returns
     -------
-    out : ndarray (NxM)
-        background
+    out : tuple of ndarrays (NxM)
+        (data without background and background)
     '''
 
     x = np.arange(data.shape[1])
@@ -40,7 +40,9 @@ def detrend_data(data, degree = 1):
     clf = linear_model.RANSACRegressor()
     clf.fit(X_, vector)
 
+
     #we have to reshape our fit to mirror our original data
     background = clf.predict(predict_).reshape(data.shape)
+    data_nb = data - background
 
-    return background
+    return data_nb, background
