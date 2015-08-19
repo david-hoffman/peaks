@@ -249,7 +249,8 @@ class Gauss2D(object):
         num_params = len(opt_params)
 
         if num_params == 7:
-            return abs(2*np.pi*opt_params[0]*opt_params[3]*opt_params[4]*np.sqrt(1-opt_params[5]**2))
+            return abs(2*np.pi*opt_params[0]*opt_params[3]*opt_params[4]*\
+            np.sqrt(1-opt_params[5]**2))
         elif num_params == 6:
             return abs(2*np.pi*opt_params[0]*opt_params[3]*opt_params[4])
         else:
@@ -395,7 +396,7 @@ class Gauss2D(object):
              self.errmsg = "Amplitude unphysical"
              self.ier = 11
 
-    def estimate_params(self):
+    def estimate_params(self,degree = 1):
         '''
         Estimate the parameters that best model the data using it's moments
 
@@ -412,14 +413,16 @@ class Gauss2D(object):
 
         Notes
         -----
-        This method works _very_ poorly if the data has any bias
+        Bias is removed from data using detrend in the util module.
         '''
 
-        #initialize the array
+        #initialize the parameter array
         params = np.zeros(7)
 
-        #pull data from the object for easier use
-        data, bg = detrend(self._data)
+        #detrend data
+        data, bg = detrend(self._data, degree = degree)
+
+        #calculate the offset for the original data
         offset = bg.mean()
 
         #calculate the moments up to second order
@@ -434,7 +437,7 @@ class Gauss2D(object):
         covar = M[1,1]/M[0,0]-xbar*ybar
 
         #place the model parameters in the return array
-        params[:3] = data.max()+offset, xbar, ybar
+        params[:3] = data.max(), xbar, ybar
         params[3] = np.sqrt(np.abs(xvar))
         params[4] = np.sqrt(np.abs(yvar))
         params[5] = covar/np.sqrt(np.abs(xvar*yvar))
