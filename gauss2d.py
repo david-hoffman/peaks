@@ -285,6 +285,12 @@ class Gauss2D(object):
             elif modeltype.lower() == 'norot':
                 guess_params = np.delete(guess_params,5)
 
+        #handle the case where the user passes a dictionary of values.
+        try:
+            guess_params = self.dict_to_params(guess_params)
+        except IndexError as e:
+            pass
+
         self._guess_params = guess_params
 
         #pull the data attribute for use
@@ -450,8 +456,8 @@ class Gauss2D(object):
         #change the internal state
         return params.copy()
 
-    @staticmethod
-    def _params_dict(params):
+    @classmethod
+    def _params_dict(cls, params):
         '''
         Helper function to return a version of params in dictionary form to make
         the user interface a little more friendly
@@ -469,6 +475,24 @@ class Gauss2D(object):
             keys.remove('sigma_y')
 
         return {i[0] : i[1] for i in zip(keys,params)}
+
+    @classmethod
+    def dict_to_params(cls, d):
+        '''
+        Helper function to return a version of params in dictionary form to make
+        the user interface a little more friendly
+        '''
+
+        keys = ['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'rho', 'offset']
+
+        values = []
+        for k in keys:
+            try:
+                values.append(d[k])
+            except KeyError as e:
+                pass
+
+        return np.array(values)
 
     def opt_params_dict(self):
         return self._params_dict(self.opt_params)
