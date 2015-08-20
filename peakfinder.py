@@ -10,6 +10,7 @@ import numpy as np
 #the difference of Gaussians algorithm
 from skimage.feature import blob_dog
 from skimage.draw import circle
+from skimage.filters import threshold_yen
 
 #we need ittertools for the pruner function defined below
 import itertools as itt
@@ -30,6 +31,8 @@ from .gauss2d import Gauss2D
 
 #need pandas for better data containers
 import pandas as pd
+
+from numpy.linalg import norm
 
 class PeakFinder(object):
     '''
@@ -65,14 +68,12 @@ class PeakFinder(object):
         #make an initial guess of the threshold
         self._thresh = np.median(data)
         self._blobs = None
-        #these are the fit coefficients
-        self._peak_coefs = None
         self._modeltype = modeltype
         #estimated width of the blobs
         self._blob_sigma = sigma
 
         self._labels = None
-
+        #peak coefs from fits
         self._fits = None
 
     ########################
@@ -106,7 +107,7 @@ class PeakFinder(object):
         Optimized parameters from the fit
         '''
         #User should not be able to modify this, so return copy
-        return self._peak_coefs.copy()
+        return self._fits.copy()
 
     @property
     def blobs(self):
@@ -115,6 +116,21 @@ class PeakFinder(object):
         '''
         #User should not be able to modify this, so return copy
         return self._blobs.copy()
+
+    @blobs.setter
+    def blobs(self, value):
+        if not isinstance(value, np.ndarray):
+            raise TypeError('Blobs must be an ndarray')
+
+        if value.ndim != 2:
+            raise TypeError("Blobs don't have the right dimensions")
+
+        if value.shape[1] != 4:
+            raise TypeError("Blobs don't have enough variables")
+
+        #use a copy so that changes on the outside don't affect the internal
+        #variable
+        self._blobs = value.copy()
 
     @property
     def labels(self):
@@ -152,6 +168,17 @@ class PeakFinder(object):
 
 
     def find_blobs(self, type='dog', **kwargs):
+        '''
+        Estimate peak locations by using a difference of Gaussians algorithm
+
+        Parameters
+        ----------
+        min_sigma : floatsmallest sigma for DOG
+
+        '''
+
+        #scale the data to the interval of [0,1], the DOG algorithm works best
+        #for this
 
         data = self.data.astype(float)
 
@@ -160,8 +187,18 @@ class PeakFinder(object):
 
         scaled_data = (data-dmin)/(dmax-dmin)
 
-        scaled_thresh = (float(self.thresh)-dmin)/(dmax-dmin)
+        #Threshold is a special variable because it needs to be scaled as well.
+        #See if the user has tried to pass it
+        try:
+            thresh = kwargs['threshold']
+        except KeyError as e:
+            #if that fails then set the threshold to the object's
+            thresh = self.thresh
 
+        #now scale the threshold the same as we did for the data
+        scaled_thresh = (float(thresh)-dmin)/(dmax-dmin)
+
+        #take care of the default kwargs with 'good' values
         default_kwargs = {'min_sigma' : self.blob_sigma/1.6, \
         'max_sigma' : self.blob_sigma*1.6, 'threshold' : scaled_thresh}#, 'overlap' : 0.0}
 
@@ -174,14 +211,14 @@ class PeakFinder(object):
         if kwargs['min_sigma'] >= kwargs['max_sigma']:
             kwargs['max_sigma'] = kwargs['min_sigma']*1.6**2
 
-
+        #Perform the DOG
         if type.lower() == 'dog':
-            # need to rescale data
             blobs = blob_dog(scaled_data,**kwargs)
         else:
             blobs = None
 
-        if blobs is None:
+        #if no peaks found alert the user, but don't break their program
+        if blobs is None or len(blobs) == 0:
             warnings.warn('No peaks found',UserWarning)
 
         else:
@@ -190,7 +227,11 @@ class PeakFinder(object):
             #the estimated center as well
             blobs = np.array([[i[0], i[1], i[2], self.data[i[0],i[1]]] for i in blobs])
 
+            #sort blobs by the max am value
+            blobs[blobs[:,3].argsort()]
+
         self._blobs = blobs
+        return blobs
 
     def label_blobs(self, diameter = None):
         '''
@@ -216,7 +257,7 @@ class PeakFinder(object):
                 radius = blob[2]*4
             else:
                 radius = diameter
-            rr, cc = circle(blob[0],blob[1],radius)
+            rr, cc = circle(blob[0],blob[1],radius,self._data.shape)
             tolabel[rr, cc] = 1
 
         labels, num_labels = label(tolabel)
@@ -228,35 +269,46 @@ class PeakFinder(object):
         return labels
 
     def plot_labels(self, withfits = False, **kwargs):
+        '''
+        Generate a plot of the found peaks, individually
+        '''
 
-        if self._fits is None:
-            withfits = False
-            warnings.warn('Blobs have not been fit yet, cannot show fits', UserWarning)
-        else:
-            fits = self._fits
+        #check if the fitting has been performed yet, warn user if it hasn't
+        if withfits:
+            if self._fits is None:
+                withfits = False
+                warnings.warn('Blobs have not been fit yet, cannot show fits', UserWarning)
+            else:
+                fits = self._fits
 
+        #pull the labels and the data from the object
         labels = self._labels
         data = self.data
 
+        #check to see if data has been labelled
         if labels is None:
             self.label_blobs()
             if labels is None:
                 warnings.warn('Labels were not available', UserWarning)
+
                 return None
 
+        #find objects from labelled data
         my_objects = find_objects(labels)
 
+        #generate a nice layout
         nb_labels = len(my_objects)
 
         nrows = int(np.ceil(np.sqrt(nb_labels)))
         ncols = int(np.ceil(nb_labels / nrows))
 
         fig, axes = plt.subplots(nrows, ncols, figsize=(3*ncols, 3*nrows))
-        for n, obj in enumerate(my_objects):
-            idx = np.unravel_index(n,(nrows,ncols))
-            axes[idx].matshow(data[obj],extent=(obj[1].start,obj[1].stop-1,obj[0].stop-1,obj[0].start),**kwargs)
+
+        for obj, ax in zip(my_objects,axes.ravel()):
+            ax.matshow(data[obj],extent=(obj[1].start,obj[1].stop-1,obj[0].stop-1,obj[0].start),**kwargs)
             if withfits:
-                axes[idx].contour(Gauss2D.gen_model(data[obj], *self.fit_to_params(fits,n)),\
+                #generate the model fit to display, from parameters.
+                ax.contour(Gauss2D.gen_model(data[obj], *self.fit_to_params(fits,n)),\
                 extent=(obj[1].start,obj[1].stop-1,obj[0].stop-1,obj[0].start),colors='w')
 
         ## Remove empty plots
@@ -266,6 +318,7 @@ class PeakFinder(object):
 
         fig.tight_layout()
 
+        #return the fig and axes handles to user for later manipulation.
         return fig, axes
 
     def fit_to_params(self, fit, idx):
@@ -302,7 +355,13 @@ class PeakFinder(object):
         for i, obj in enumerate(my_objects):
             mypeak = Gauss2D(data[obj])
             mypeak.optimize_params_ls(modeltype = self.modeltype)
-            peakfits.loc[i] = mypeak.opt_params_dict()
+            fit_coefs = mypeak.opt_params_dict()
+
+            #need to place the fit coefs in the right place
+            fit_coefs['y0'] += obj[0].start
+            fit_coefs['x0'] += obj[1].start
+
+            peakfits.loc[i] = fit_coefs
 
         #we know that when the fit fails it returns 0, so replace with NaN
         peakfits.replace(0,np.NaN)
@@ -351,10 +410,22 @@ class PeakFinder(object):
                         blob1[3] = -1
 
             # set internal blobs array to blobs_array[blobs_array[:, 2] > 0]
-            self._blobs = np.array([a for b, a in zip(myBlobs,blobs) if b[3] > 0])
+            self._blobs = np.array([a for b, a in zip(myBlobs,self.blobs) if b[3] > 0])
 
             #Return a copy of blobs incase user wants a onliner
             return self.blobs
+
+    def remove_edge_blobs(self,distance):
+
+        ymax, xmax = self._data.shape
+
+        my_blobs = np.array([blob for blob in self.blobs if distance < blob[0] < ymax - distance\
+                    and distance < blob[1] < xmax - distance])
+
+        my_blobs = my_blobs[my_blobs[:,3].argsort()]
+
+        self._blobs = my_blobs
+        return my_blobs
 
     def plot_blobs(self, diameter = None, **kwargs):
 
@@ -372,7 +443,7 @@ class PeakFinder(object):
             c = plt.Circle((x, y), radius=diameter/2, color='r', linewidth=1,\
                            fill=False)
             ax.add_patch(c)
-            ax.annotate('{}'.format(self.data[y,x]), xy=(x, y),xytext = (diameter/2,diameter/2),\
-                textcoords = 'offset points', color='k', backgroundcolor=(1,1,1,0.5) ,xycoords='data')
+            ax.annotate('{:.3f}'.format(self.data[y,x]), xy=(x, y),xytext = (x+diameter/2,y+diameter/2),\
+                textcoords = 'data', color='k', backgroundcolor=(1,1,1,0.5) ,xycoords='data')
 
         return fig, ax
