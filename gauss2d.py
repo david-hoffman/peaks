@@ -9,12 +9,13 @@ import numpy as np
 #need measure to take image moments
 from skimage.measure import moments
 #need basic curve fitting
-from scipy.optimize import curve_fit
-
+from scipy.optimize import curve_fit, OptimizeWarning
+#need to detrend data before estimating parameters
 from .util import detrend
-
+#need to be able to deal with warnings
 import warnings
-from scipy.optimize import OptimizeWarning
+#Plotting
+from matplotlib import pyplot as plt
 
 #Eventually we'll want to abstract the useful, abstract bits of this class to a
 #parent class called peak that will allow for multiple types of fits
@@ -402,7 +403,7 @@ class Gauss2D(object):
              self.errmsg = "Amplitude unphysical"
              self.ier = 11
 
-    def estimate_params(self,degree = 1):
+    def estimate_params(self,degree = 1, detrenddata = True):
         '''
         Estimate the parameters that best model the data using it's moments
 
@@ -426,10 +427,15 @@ class Gauss2D(object):
         params = np.zeros(7)
 
         #detrend data
-        data, bg = detrend(self._data, degree = degree)
-
-        #calculate the offset for the original data
-        offset = bg.mean()
+        if detrenddata:
+            data, bg = detrend(self._data.copy(), degree = degree)
+            offset = bg.mean()
+            amp = data.max()
+        else:
+            data = self._data
+            offset = data.min()
+            amp = data.max()-offset
+            
 
         #calculate the moments up to second order
         M = moments(data, 2)
@@ -443,7 +449,7 @@ class Gauss2D(object):
         covar = M[1,1]/M[0,0]-xbar*ybar
 
         #place the model parameters in the return array
-        params[:3] = data.max(), xbar, ybar
+        params[:3] = amp, xbar, ybar
         params[3] = np.sqrt(np.abs(xvar))
         params[4] = np.sqrt(np.abs(yvar))
         params[5] = covar/np.sqrt(np.abs(xvar*yvar))
@@ -505,17 +511,21 @@ class Gauss2D(object):
                 optimize_params_ls.')
         return optimize_params_ls(self)
 
+    def plot(self):
+        fig, ax = plt.subplots(1,1,squeeze = True)
+        ax.matshow(self._data)
+        return fig, ax
+
+    def _subplot(self, params):
+        fig, ax = self.plot()
+        guess = self.gen_model(self.data, params)
+        ax.contour(guess, color='r')
+
     def plot_estimated(self):
-        raise NotImplementedError('plot_estimated(self)')
+        self._subplot(self.guess_params)
 
     def plot_optimized(self):
-        raise NotImplementedError('plot_optimized(self)')
-
-    def plot(self):
-        raise NotImplementedError('plot(self)')
-
-    def _subplot(self):
-        raise NotImplementedError('_subplot(self)')
+        self._subplot(self.opt_params)
 
 if __name__ == '__main__':
     pass
