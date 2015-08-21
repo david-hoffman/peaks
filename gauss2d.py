@@ -11,7 +11,7 @@ from skimage.measure import moments
 #need basic curve fitting
 from scipy.optimize import curve_fit, OptimizeWarning
 #need to detrend data before estimating parameters
-from .util import detrend
+from .utils import detrend
 #need to be able to deal with warnings
 import warnings
 #Plotting
@@ -258,7 +258,7 @@ class Gauss2D(object):
             return abs(2*np.pi*opt_params[0]*opt_params[3]**2)
 
     def optimize_params_ls(self, guess_params = None, modeltype = 'norot',\
-                            quiet = False, check_params = True):
+                            quiet = False, check_params = True, detrenddata = False):
         '''
         A function that will optimize the parameters for a 2D Gaussian model
         using a least squares method
@@ -280,7 +280,7 @@ class Gauss2D(object):
         #Need to test if the variable is good or not.
         if guess_params is None:
             #if not we generate them
-            guess_params = self.estimate_params()
+            guess_params = self.estimate_params(detrenddata = detrenddata)
             if modeltype.lower() == 'sym':
                 guess_params = np.delete(guess_params,(4,5))
             elif modeltype.lower() == 'norot':
@@ -403,7 +403,7 @@ class Gauss2D(object):
              self.errmsg = "Amplitude unphysical"
              self.ier = 11
 
-    def estimate_params(self,degree = 1, detrenddata = True):
+    def estimate_params(self,detrenddata = False):
         '''
         Estimate the parameters that best model the data using it's moments
 
@@ -428,14 +428,16 @@ class Gauss2D(object):
 
         #detrend data
         if detrenddata:
-            data, bg = detrend(self._data.copy(), degree = degree)
+            #only try to remove a plane, any more should be done before passing
+            #object instatiation.
+            data, bg = detrend(self._data.copy(), degree = 1)
             offset = bg.mean()
             amp = data.max()
         else:
             data = self._data
             offset = data.min()
             amp = data.max()-offset
-            
+
 
         #calculate the moments up to second order
         M = moments(data, 2)
