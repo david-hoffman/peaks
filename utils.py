@@ -38,7 +38,22 @@ def detrend(data, degree = 1):
     X_ = poly.fit_transform(X)
     predict_ = poly.fit_transform(predict)
     clf = linear_model.RANSACRegressor()
-    clf.fit(X_, vector)
+
+    #try the fit a few times, as it seems prone to failure
+    ntries = 10
+    for i in range(ntries):
+        try:
+            #try the fit
+            clf.fit(X_, vector)
+        except ValueError as e:
+            #except the fit but do nothing
+            #unless the number of tries has been reached
+            if i == ntries-1:
+                #then raise the error
+                raise e
+        else:
+            #if no error is thrown, break out of the loop.
+            break
 
 
     #we have to reshape our fit to mirror our original data
