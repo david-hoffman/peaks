@@ -188,27 +188,31 @@ class PSFStackAnalyzer(StackAnalyzer):
             max_z = Gauss2D(substack)
             max_z.optimize_params_ls()
 
-            #recenter the coordinates and add a slice varaible
-            opt_params = max_z.opt_params_dict()
-            opt_params['slice']=my_max[0]
-            opt_params['x0']+=xstart
-            opt_params['y0']+=ystart
+            if np.isfinite(max_z.opt_params).all():
 
-            #append to our list
-            peakfits.append(opt_params.copy())
+                #recenter the coordinates and add a slice varaible
+                opt_params = max_z.opt_params_dict()
+                opt_params['slice']=my_max[0]
+                opt_params['x0']+=xstart
+                opt_params['y0']+=ystart
 
-            #pop the slice parameters
-            opt_params.pop('slice')
+                #append to our list
+                peakfits.append(opt_params.copy())
 
-            forwardrange = range(my_max[0]+1,self.stack.shape[0])
-            backwardrange = reversed(range(0, my_max[0]))
+                #pop the slice parameters
+                opt_params.pop('slice')
 
-            peakfits+=self.fitPeak(forwardrange, fitwidth, opt_params.copy(), quiet = True)
-            peakfits+=self.fitPeak(backwardrange, fitwidth, opt_params.copy(), quiet = True)
+                forwardrange = range(my_max[0]+1,self.stack.shape[0])
+                backwardrange = reversed(range(0, my_max[0]))
 
-            peakfits_df = pd.DataFrame(peakfits)
+                peakfits+=self.fitPeak(forwardrange, fitwidth, opt_params.copy(), quiet = True)
+                peakfits+=self.fitPeak(backwardrange, fitwidth, opt_params.copy(), quiet = True)
 
-            fits.append(peakfits_df.set_index('slice').sort())
+                peakfits_df = pd.DataFrame(peakfits)
+
+                fits.append(peakfits_df.set_index('slice').sort())
+            else:
+                print('blob {} is unfittable'.format(blob))
 
         self.fits = fits
 
