@@ -338,7 +338,7 @@ class PeakFinder(object):
         return [my_dict[k] for k in keys]
 
 
-    def fit_blobs(self, diameter = None):
+    def fit_blobs(self, diameter = None, quiet = True):
         labels = self._labels
         data = self.data
 
@@ -354,7 +354,7 @@ class PeakFinder(object):
 
         for i, obj in enumerate(my_objects):
             mypeak = Gauss2D(data[obj])
-            mypeak.optimize_params_ls(modeltype = self.modeltype)
+            mypeak.optimize_params_ls(modeltype = self.modeltype, quiet = quiet)
             fit_coefs = mypeak.opt_params_dict()
 
             #need to place the fit coefs in the right place
