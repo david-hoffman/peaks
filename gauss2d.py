@@ -50,7 +50,7 @@ class Gauss2D(object):
         self._data = data
         self._guess_params = None
         self._popt = None
-        #self._pcov = None
+        self._pcov = None
         #self._angle = None
         super().__init__(**kwargs)
 
@@ -61,7 +61,7 @@ class Gauss2D(object):
     @property
     def data(self):
         '''
-        Optimized parameters from the fit
+        Internal data
         '''
 
         #This attribute should be read-only, which means that it should return
@@ -81,7 +81,7 @@ class Gauss2D(object):
     @property
     def pcov(self):
         '''
-        Optimized parameters from the fit
+        Covariance matrix of model parameters from the fit
         '''
 
         #This attribute should be read-only, which means that it should return
@@ -241,6 +241,16 @@ class Gauss2D(object):
     def area(self,**kwargs):
         '''
         A function for calculating the area of the model peak
+
+        Parameters
+        ----------
+        kwargs : dictionary
+            key word arguments to pass to `optimize_params_ls`, only used if
+            `opt_params` has not been caculated yet.
+
+        Returns
+        -------
+        Area of the peak based on fit parameters.
         '''
 
         if self._popt is None:
@@ -407,6 +417,13 @@ class Gauss2D(object):
         '''
         Estimate the parameters that best model the data using it's moments
 
+        Parameters
+        ----------
+        detrenddata : bool
+            a keyword that determines whether data should be detrended first.
+            Detrending takes *much* longer than not. Probably only useful for
+            large fields of view.
+
         Returns
         -------
         params : array_like
@@ -434,7 +451,7 @@ class Gauss2D(object):
             offset = bg.mean()
             amp = data.max()
         else:
-            data = self._data
+            data = self._data.astype(float)
             offset = data.min()
             amp = data.max()-offset
 
