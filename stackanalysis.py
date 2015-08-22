@@ -154,6 +154,16 @@ class PSFStackAnalyzer(StackAnalyzer):
         self.peakfinder = PeakFinder(self.stack.max(0),self.psfwidth,**kwargs)
         self.peakfinder.find_blobs()
 
+    @staticmethod
+    def gauss(xdata, amp, x0, sigma_x, offset):
+        '''
+        Helper function to fit 1D Gaussians
+        '''
+
+        #Need to implement this and then fit each z-stack amplitude trace
+        #and then interpolate the sigmas at the found max.
+        raise NotImplementedError
+
     def fitPeaks(self, fitwidth):
         '''
         Fit all peaks found by peak finder
@@ -209,6 +219,8 @@ class PSFStackAnalyzer(StackAnalyzer):
                 peakfits+=self.fitPeak(backwardrange, fitwidth, opt_params.copy(), quiet = True)
 
                 peakfits_df = pd.DataFrame(peakfits)
+                #convert sigmas to positive values
+                peakfits_df[['sigma_x','sigma_y']] = abs(peakfits_df[['sigma_x','sigma_y']])
 
                 fits.append(peakfits_df.set_index('slice').sort())
             else:
