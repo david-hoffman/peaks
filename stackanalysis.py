@@ -4,6 +4,7 @@ A set of classes for analyzing data stacks that contain punctate data
 import numpy as np
 import pandas as pd
 from scipy.ndimage.filters import gaussian_filter, median_filter
+from scipy.optimize import curve_fit
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
 
@@ -94,6 +95,12 @@ class StackAnalyzer(object):
         startingfit : dict
             fit coefficients
 
+        Returns
+        -------
+        list : list of dicts
+            A list of dictionaries containing the best fits. Easy to turn into
+            a DataFrame
+
         '''
 
         #pull stack
@@ -179,18 +186,70 @@ class PSFStackAnalyzer(StackAnalyzer):
         #the slice with the max value before finding peaks.
 
     @staticmethod
-    def gauss(xdata, amp, x0, sigma_x, offset):
-        '''
-        Helper function to fit 1D Gaussians
-        '''
+    def gauss_fit(xdata, ydata, withoffset = True,trim = None, guess_z = None):
 
-        #Need to implement this and then fit each z-stack amplitude trace
-        #and then interpolate the sigmas at the found max.
-        raise NotImplementedError
+        def nmoment(x, counts, c, n):
+            '''
+            A helper function to calculate moments of histograms
+            '''
+            return np.sum((x-c)**n*counts) / np.sum(counts)
+
+        def gauss_no_offset(x, amp, x0, sigma_x):
+            '''
+            Helper function to fit 1D Gaussians
+            '''
+
+            return amp*np.exp(-(x-x0)**2/(2*sigma_x**2))
+
+        def gauss(x, amp, x0, sigma_x, offset):
+            '''
+            Helper function to fit 1D Gaussians
+            '''
+
+            return amp*np.exp(-(x-x0)**2/(2*sigma_x**2))+offset
+
+        offset = ydata.min()
+        ydata_corr = ydata-offset
+
+        if guess_z is None:
+            x0 = nmoment(xdata,ydata_corr,0,1)
+        else:
+            x0 = guess_z
+
+        sigma_x = np.sqrt(nmoment(xdata,ydata_corr,x0,2))
+
+        p0 = np.array([ydata_corr.max(),x0,sigma_x, offset])
+
+        if trim is not None:
+            args =  abs(xdata-x0) < trim*sigma_x
+            xdata=xdata[args]
+            ydata=ydata[args]
+
+        try:
+            if withoffset:
+                popt, pcov = curve_fit(gauss, xdata, ydata, p0=p0)
+            else:
+                popt, pcov = curve_fit(gauss_no_offset, xdata, ydata, p0=p0[:3])
+                popt = np.insert(popt,3,offset)
+        except RuntimeError as e:
+            popt=p0*np.nan
+
+        return popt
+
 
     def fitPeaks(self, fitwidth, **kwargs):
         '''
         Fit all peaks found by peak finder
+
+        Parameters
+        ----------
+        fitwidth : int
+            Sets the size of the fitting window
+
+        Returns
+        -------
+        list : list of DataFrames
+            A list of DataFrames with each DataFrame holding the fits of one peak
         '''
 
         blobs = self.peakfinder.blobs
@@ -249,6 +308,7 @@ class PSFStackAnalyzer(StackAnalyzer):
                 peakfits+=self.fitPeak(forwardrange, fitwidth, opt_params.copy(), quiet = True)
                 peakfits+=self.fitPeak(backwardrange, fitwidth, opt_params.copy(), quiet = True)
 
+                #turn everything into a data frame for easy manipulation.
                 peakfits_df = pd.DataFrame(peakfits)
                 #convert sigmas to positive values
                 peakfits_df[['sigma_x','sigma_y']] = abs(peakfits_df[['sigma_x','sigma_y']])
@@ -260,6 +320,28 @@ class PSFStackAnalyzer(StackAnalyzer):
         self.fits = fits
 
         return fits
+
+    def calc_psf_params(self,subrange = slice(None,None,None),**kwargs):
+        fits = self.fits
+
+        psf_params = []
+
+        for fit in fits:
+            #first fit the amplitudes
+            #pull values from DataFrame
+            tempfit = fit.dropna().loc[subrange]
+            z = tempfit.index.values
+            amp, x, y, s_x, s_y =  tempfit[['amp', 'x0', 'y0', 'sigma_x', 'sigma_y']].values.T
+            popt = self.gauss_fit(z,amp,**kwargs)
+            famp, z0, sigma_z, offset = popt
+            x0 = np.interp(z0,z,x)
+            y0 = np.interp(z0,z,y)
+            sigma_x = np.interp(z0,z,s_x)
+            sigma_y = np.interp(z0,z,s_y)
+
+            psf_params.append({'z0' : z0, 'y0' : y0, 'x0' : x0, 'sigma_z' : abs(sigma_z), 'sigma_y' : sigma_y, 'sigma_x' : sigma_x, 'SNR' : famp/offset})
+
+        self.psf_params = pd.DataFrame(psf_params)
 
 
 class SIMStackAnalyzer(StackAnalyzer):
