@@ -168,22 +168,11 @@ class PSFStackAnalyzer(StackAnalyzer):
     A specialized version of StackAnalyzer for PSF stacks.
     """
 
-    def __init__(self, stack, psfwidth = 1.68, highaccuracy = False, **kwargs):
+    def __init__(self, stack, psfwidth = 1.68, **kwargs):
         super().__init__(stack)
         self.psfwidth = psfwidth
 
-        #if highaccuracy is required find the max slice, by looking for the slice
-        #with the max value.
-        if highaccuracy:
-            #need to filter first so that salt and pepper noise doesn't mess up
-            #the calculation. Using a fourier_gaussian filter as its fast
-
-            ##NEWS FLASH, this doesn't work if field isn't flat!
-            fstack = gaussian_filter(self.stack, 2*psfwidth)
-            maxslice = np.unravel_index(fstack.argmax(), fstack.shape)[0]
-            self.peakfinder = PeakFinder(self.stack[maxslice],self.psfwidth,**kwargs)
-        else:
-            self.peakfinder = PeakFinder(median_filter(self.stack.max(0),3),self.psfwidth,**kwargs)
+        self.peakfinder = PeakFinder(median_filter(self.stack.max(0),3),self.psfwidth,**kwargs)
 
         self.peakfinder.find_blobs()
         #should have a high accuracy mode that filters the data first and finds
