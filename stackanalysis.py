@@ -3,6 +3,7 @@ A set of classes for analyzing data stacks that contain punctate data
 '''
 import numpy as np
 import pandas as pd
+from scipy.ndimage.filters import gaussian_filter, median_filter
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
 
@@ -12,6 +13,7 @@ class StackAnalyzer(object):
     """
     def __init__(self, stack):
         super().__init__()
+        #stack is the image stack to be analyzed
         self.stack = stack
 
     def findpeaks(self):
@@ -23,18 +25,37 @@ class StackAnalyzer(object):
 
     def sliceMaker(self, y0, x0, width):
         '''
-        A utility function to generate slices for later use
+        A utility function to generate slices for later use.
+
+        Parameters
+        ----------
+        y0 : int
+            center y position of the slice
+        x0 : int
+            center x position of the slice
+        width : int
+            Width of the slice
+
+        Returns
+        -------
+        slices : list
+            A list of slice objects, the first one is for the y dimension and
+            and the second is for the x dimension.
+
+        Notes
+        -----
+        The method will automatically coerce slices into acceptable bounds.
         '''
 
         #pull stack from object
         stack = self.stack
 
         #calculate max extents
-        ymax = self.stack.shape[1]
-        xmax = self.stack.shape[2]
+        zmax, ymax, xmax = self.stack.shape
 
         #calculate the start and end
         half1 = width//2
+        #we need two halves for uneven widths
         half2 = width-half1
         ystart = y0 - half1
         xstart = x0 - half1
@@ -75,6 +96,7 @@ class StackAnalyzer(object):
 
         '''
 
+        #pull stack
         stack = self.stack
 
         #set up our variable to return
@@ -94,10 +116,6 @@ class StackAnalyzer(object):
             modeltype = 'full'
 
         for s in slices:
-
-            #try to update the y0/x0 values
-            #if the fit has failed, these will be nan and the operation will raise a value error
-            #doing nothing leaves the values intact
 
             #make the slice
             myslice = self.sliceMaker(y0, x0, width)
@@ -122,7 +140,8 @@ class StackAnalyzer(object):
             if fit.error:
                 fit.optimize_params_ls(modeltype = modeltype, **kwargs)
 
-            #if there's still an error move on to the next fit
+            #if there's not an error update center of fitting window and move
+            #on to the next fit
             if not fit.error:
                 popt_d = fit.opt_params_dict()
                 popt_d['x0']+=xstart
@@ -135,6 +154,7 @@ class StackAnalyzer(object):
                 y0 = int(round(popt_d['y0']))
                 x0 = int(round(popt_d['x0']))
             else:
+                #if the fit fails, make sure to _not_ update positions.
                 bad_fit = fit.opt_params_dict()
                 bad_fit['slice']=s
 
@@ -145,14 +165,29 @@ class StackAnalyzer(object):
 
 class PSFStackAnalyzer(StackAnalyzer):
     """
-    docstring for PSFStackAnalyser
+    A specialized version of StackAnalyzer for PSF stacks.
     """
 
-    def __init__(self, stack, psfwidth = 1.68, **kwargs):
+    def __init__(self, stack, psfwidth = 1.68, highaccuracy = False, **kwargs):
         super().__init__(stack)
         self.psfwidth = psfwidth
-        self.peakfinder = PeakFinder(self.stack.max(0),self.psfwidth,**kwargs)
+
+        #if highaccuracy is required find the max slice, by looking for the slice
+        #with the max value.
+        if highaccuracy:
+            #need to filter first so that salt and pepper noise doesn't mess up
+            #the calculation. Using a fourier_gaussian filter as its fast
+
+            ##NEWS FLASH, this doesn't work if field isn't flat!
+            fstack = gaussian_filter(self.stack, 2*psfwidth)
+            maxslice = np.unravel_index(fstack.argmax(), fstack.shape)[0]
+            self.peakfinder = PeakFinder(self.stack[maxslice],self.psfwidth,**kwargs)
+        else:
+            self.peakfinder = PeakFinder(median_filter(self.stack.max(0),3),self.psfwidth,**kwargs)
+
         self.peakfinder.find_blobs()
+        #should have a high accuracy mode that filters the data first and finds
+        #the slice with the max value before finding peaks.
 
     @staticmethod
     def gauss(xdata, amp, x0, sigma_x, offset):
@@ -164,7 +199,7 @@ class PSFStackAnalyzer(StackAnalyzer):
         #and then interpolate the sigmas at the found max.
         raise NotImplementedError
 
-    def fitPeaks(self, fitwidth):
+    def fitPeaks(self, fitwidth, **kwargs):
         '''
         Fit all peaks found by peak finder
         '''
@@ -186,9 +221,16 @@ class PSFStackAnalyzer(StackAnalyzer):
 
             substack = self.stack[myslice]
 
-            my_max = np.unravel_index(substack.argmax(),substack.shape)
+            #we could do median filtering on the substack before attempting to
+            #find the max slice!
 
-            myslice[0] = my_max[0]
+            #this could still get messed up by salt and pepper noise.
+            #my_max = np.unravel_index(substack.argmax(),substack.shape)
+            #use the sum of each z-slice
+            my_max = substack.sum((1,2)).argmax()
+
+            #now change my slice to be that zslice
+            myslice[0] = my_max
             substack = self.stack[myslice]
 
             #prep our container
@@ -196,13 +238,13 @@ class PSFStackAnalyzer(StackAnalyzer):
 
             #initial fit
             max_z = Gauss2D(substack)
-            max_z.optimize_params_ls()
+            max_z.optimize_params_ls(**kwargs)
 
             if np.isfinite(max_z.opt_params).all():
 
-                #recenter the coordinates and add a slice varaible
+                #recenter the coordinates and add a slice variable
                 opt_params = max_z.opt_params_dict()
-                opt_params['slice']=my_max[0]
+                opt_params['slice']=my_max
                 opt_params['x0']+=xstart
                 opt_params['y0']+=ystart
 
@@ -212,8 +254,8 @@ class PSFStackAnalyzer(StackAnalyzer):
                 #pop the slice parameters
                 opt_params.pop('slice')
 
-                forwardrange = range(my_max[0]+1,self.stack.shape[0])
-                backwardrange = reversed(range(0, my_max[0]))
+                forwardrange = range(my_max+1,self.stack.shape[0])
+                backwardrange = reversed(range(0, my_max))
 
                 peakfits+=self.fitPeak(forwardrange, fitwidth, opt_params.copy(), quiet = True)
                 peakfits+=self.fitPeak(backwardrange, fitwidth, opt_params.copy(), quiet = True)
