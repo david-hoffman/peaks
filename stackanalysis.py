@@ -4,8 +4,10 @@ A set of classes for analyzing data stacks that contain punctate data
 import numpy as np
 import pandas as pd
 import multiprocessing as mp
+import os
 from scipy.ndimage.filters import gaussian_filter, median_filter
 from scipy.optimize import curve_fit
+from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.mlab import griddata
 from .gauss2d import Gauss2D
@@ -15,6 +17,10 @@ from .peakfinder import PeakFinder
 #Need to move all the fitting stuff into its own class and abstract as much
 #functionality from gauss2d into a parent class that can be subclassed for
 #each type of peak. Hopefully regardless of dimensionality.
+
+#theres not a huge speed up with more than ~4 cores, this might be because each
+#process needs its own copy of `stack`, or the communication overhead quickly
+#outweighs the higher processing power.
 
 def gauss_fit(xdata, ydata, withoffset = True,trim = None, guess_z = None):
 
@@ -68,28 +74,32 @@ def gauss_fit(xdata, ydata, withoffset = True,trim = None, guess_z = None):
 
 def grid(x, y, z, resX=1000, resY=1000):
     "Convert 3 column data to matplotlib grid"
-    xi = linspace(min(x), max(x), resX)
-    yi = linspace(min(y), max(y), resY)
+    if not np.isfinite(x+y+z).all():
+        raise ValueError('x y or z is not finite')
+
+    xi = np.linspace(x.min(), x.max(), resX)
+    yi = np.linspace(y.min(), y.max(), resY)
     Z = griddata(x, y, z, xi, yi,interp='linear')
-    X, Y = meshgrid(xi, yi)
+    X, Y = np.meshgrid(xi, yi)
     return X, Y, Z
 
-def scatterplot(z, y, x):
+def scatterplot(z, y, x,cmap = 'gnuplot2'):
     '''
     A way to make a nice scatterplot with contours.
     '''
     mymax = z.max()
     mymin = z.min()
-    fig, ax = subplots(1,1, squeeze=True, figsize= (6,6))
+    fig, ax = plt.subplots(1,1, squeeze=True, figsize= (6,6))
     X, Y, Z = grid(x,y,z)
-    s= ax.contourf(X, Y, Z,conts,origin='upper')
-    ax.set_xlim(0,2047)
-    ax.set_ylim(0,2047)
+    conts=20
+    s= ax.contourf(X, Y, Z,conts,origin='upper',cmap = cmap)
     ax.contour(X, Y, Z,conts,colors='k',origin='upper')
     ax.scatter(x,y,c='c')
+    ax.invert_yaxis()
     the_divider = make_axes_locatable(ax)
     color_axis = the_divider.append_axes("right", size="5%", pad=0.1)
-    colorbar(s,cax=color_axis)
+    plt.colorbar(s,cax=color_axis)
+    return fig, ax
 
 class StackAnalyzer(object):
     """
@@ -157,8 +167,13 @@ class StackAnalyzer(object):
         if xend >= xmax:
             xend = xmax - 1
 
+        toreturn = [slice(ystart,yend), slice(xstart, xend)]
+
+        #check to see if we've made valid slices, if not raise an error
+        if ystart >= yend or xstart >= xend:
+            raise RuntimeError('sliceMaker made a zero length slice '+repr(toreturn))
         #return a list of slices
-        return [slice(ystart,yend), slice(xstart, xend)]
+        return toreturn
 
     def fitPeak(self, slices, width, startingfit, **kwargs):
         '''
@@ -208,47 +223,55 @@ class StackAnalyzer(object):
         for s in slices:
 
             #make the slice
-            myslice = self.sliceMaker(y0, x0, width)
-
-            #pull the starting values from it
-            ystart = myslice[0].start
-            xstart = myslice[1].start
-
-            #insert the z-slice number
-            myslice.insert(0,s)
-
-            #set up the fit and perform it using last best params
-            fit = Gauss2D(stack[myslice])
-
-            #move our guess coefs back into the window
-            popt_d['x0']-=xstart
-            popt_d['y0']-=ystart
-
-            fit.optimize_params_ls(popt_d, **kwargs)
-
-            #if there was an error performing the fit, try again without a guess
-            if fit.error:
-                fit.optimize_params_ls(modeltype = modeltype, **kwargs)
-
-            #if there's not an error update center of fitting window and move
-            #on to the next fit
-            if not fit.error:
-                popt_d = fit.opt_params_dict()
-                popt_d['x0']+=xstart
-                popt_d['y0']+=ystart
-
-                popt_d['slice']=s
-
-                toreturn.append(popt_d.copy())
-
-                y0 = int(round(popt_d['y0']))
-                x0 = int(round(popt_d['x0']))
+            try:
+                myslice = self.sliceMaker(y0, x0, width)
+            except RuntimeError as e:
+                print('Fit window moved to edge of ROI')
+                break
             else:
-                #if the fit fails, make sure to _not_ update positions.
-                bad_fit = fit.opt_params_dict()
-                bad_fit['slice']=s
+                #pull the starting values from it
+                ystart = myslice[0].start
+                xstart = myslice[1].start
 
-                toreturn.append(bad_fit.copy())
+                #insert the z-slice number
+                myslice.insert(0,s)
+
+                #set up the fit and perform it using last best params
+                fit = Gauss2D(stack[myslice])
+
+                #move our guess coefs back into the window
+                popt_d['x0']-=xstart
+                popt_d['y0']-=ystart
+                #leave this in for now for easier debugging in future.
+                try:
+                    fit.optimize_params_ls(popt_d, **kwargs)
+                except TypeError as e:
+                    print(repr(myslice))
+                    raise e
+
+                #if there was an error performing the fit, try again without a guess
+                if fit.error:
+                    fit.optimize_params_ls(modeltype = modeltype, **kwargs)
+
+                #if there's not an error update center of fitting window and move
+                #on to the next fit
+                if not fit.error:
+                    popt_d = fit.opt_params_dict()
+                    popt_d['x0']+=xstart
+                    popt_d['y0']+=ystart
+
+                    popt_d['slice']=s
+
+                    toreturn.append(popt_d.copy())
+
+                    y0 = int(round(popt_d['y0']))
+                    x0 = int(round(popt_d['x0']))
+                else:
+                    #if the fit fails, make sure to _not_ update positions.
+                    bad_fit = fit.opt_params_dict()
+                    bad_fit['slice']=s
+
+                    toreturn.append(bad_fit.copy())
 
         return toreturn
 
@@ -330,7 +353,7 @@ class PSFStackAnalyzer(StackAnalyzer):
             print('blob {} is unfittable'.format(blob))
             return None
 
-    def fitPeaks(self, fitwidth, mptrue = False, **kwargs):
+    def fitPeaks(self, fitwidth, nproc = 1, **kwargs):
         '''
         Fit all peaks found by peak finder
 
@@ -347,14 +370,16 @@ class PSFStackAnalyzer(StackAnalyzer):
 
         blobs = self.peakfinder.blobs
 
-        if not mptrue:
+        if nproc == 1:
             fits = [self._fitPeaks_sub(fitwidth, blob, **kwargs) for blob in blobs]
-        else:
+        elif 1 < nproc <= os.cpu_count():
             #multiprocessing version, order **NOT** retained
-            with mp.Pool() as p:
+            print('multiprocessing engaged with {} cores'.format(nproc))
+            with mp.Pool(nproc) as p:
                 fits = [p.apply_async(self._fitPeaks_sub, args=(fitwidth, blob), kwds =kwargs) for blob in blobs]
-
                 fits = [pp.get() for pp in fits]
+        else:
+            raise ValueError('nproc = {} while the maximum number of cores is {}'.format(nproc, os.cpu_count()))
         #clear nones
         fits = [fit for fit in fits if fit is not None]
 
@@ -372,18 +397,25 @@ class PSFStackAnalyzer(StackAnalyzer):
             #pull values from DataFrame
             tempfit = fit.dropna().loc[subrange]
             z = tempfit.index.values
+            #TODO
+            #need to make this robust to different fitting models.
             amp, x, y, s_x, s_y =  tempfit[['amp', 'x0', 'y0', 'sigma_x', 'sigma_y']].values.T
             popt = gauss_fit(z,amp,**kwargs)
-            famp, z0, sigma_z, offset = popt
-            x0 = np.interp(z0,z,x)
-            y0 = np.interp(z0,z,y)
-            sigma_x = np.interp(z0,z,s_x)
-            sigma_y = np.interp(z0,z,s_y)
+            if np.isfinite(popt).all():
+                famp, z0, sigma_z, offset = popt
+                x0 = np.interp(z0,z,x)
+                y0 = np.interp(z0,z,y)
+                sigma_x = np.interp(z0,z,s_x)
+                sigma_y = np.interp(z0,z,s_y)
 
-            psf_params.append({'z0' : z0, 'y0' : y0, 'x0' : x0, 'sigma_z' : abs(sigma_z), 'sigma_y' : sigma_y, 'sigma_x' : sigma_x, 'SNR' : famp/offset})
+                psf_params.append({'z0' : z0, 'y0' : y0, 'x0' : x0, 'sigma_z' : abs(sigma_z), 'sigma_y' : sigma_y, 'sigma_x' : sigma_x, 'SNR' : famp/offset})
 
         self.psf_params = pd.DataFrame(psf_params)
 
+    def plot_psf_params(self, feature):
+        psf_params = self.psf_params
+        fig, ax = scatterplot(psf_params[feature].values, psf_params.y0.values, psf_params.x0.values)
+        fig.suptitle(feature)
 
 class SIMStackAnalyzer(StackAnalyzer):
     """
