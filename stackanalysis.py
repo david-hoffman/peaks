@@ -3,10 +3,93 @@ A set of classes for analyzing data stacks that contain punctate data
 '''
 import numpy as np
 import pandas as pd
+import multiprocessing as mp
 from scipy.ndimage.filters import gaussian_filter, median_filter
 from scipy.optimize import curve_fit
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.mlab import griddata
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
+
+#TODO
+#Need to move all the fitting stuff into its own class and abstract as much
+#functionality from gauss2d into a parent class that can be subclassed for
+#each type of peak. Hopefully regardless of dimensionality.
+
+def gauss_fit(xdata, ydata, withoffset = True,trim = None, guess_z = None):
+
+    def nmoment(x, counts, c, n):
+        '''
+        A helper function to calculate moments of histograms
+        '''
+        return np.sum((x-c)**n*counts) / np.sum(counts)
+
+    def gauss_no_offset(x, amp, x0, sigma_x):
+        '''
+        Helper function to fit 1D Gaussians
+        '''
+
+        return amp*np.exp(-(x-x0)**2/(2*sigma_x**2))
+
+    def gauss(x, amp, x0, sigma_x, offset):
+        '''
+        Helper function to fit 1D Gaussians
+        '''
+
+        return amp*np.exp(-(x-x0)**2/(2*sigma_x**2))+offset
+
+    offset = ydata.min()
+    ydata_corr = ydata-offset
+
+    if guess_z is None:
+        x0 = nmoment(xdata,ydata_corr,0,1)
+    else:
+        x0 = guess_z
+
+    sigma_x = np.sqrt(nmoment(xdata,ydata_corr,x0,2))
+
+    p0 = np.array([ydata_corr.max(),x0,sigma_x, offset])
+
+    if trim is not None:
+        args =  abs(xdata-x0) < trim*sigma_x
+        xdata=xdata[args]
+        ydata=ydata[args]
+
+    try:
+        if withoffset:
+            popt, pcov = curve_fit(gauss, xdata, ydata, p0=p0)
+        else:
+            popt, pcov = curve_fit(gauss_no_offset, xdata, ydata, p0=p0[:3])
+            popt = np.insert(popt,3,offset)
+    except RuntimeError as e:
+        popt=p0*np.nan
+
+    return popt
+
+def grid(x, y, z, resX=1000, resY=1000):
+    "Convert 3 column data to matplotlib grid"
+    xi = linspace(min(x), max(x), resX)
+    yi = linspace(min(y), max(y), resY)
+    Z = griddata(x, y, z, xi, yi,interp='linear')
+    X, Y = meshgrid(xi, yi)
+    return X, Y, Z
+
+def scatterplot(z, y, x):
+    '''
+    A way to make a nice scatterplot with contours.
+    '''
+    mymax = z.max()
+    mymin = z.min()
+    fig, ax = subplots(1,1, squeeze=True, figsize= (6,6))
+    X, Y, Z = grid(x,y,z)
+    s= ax.contourf(X, Y, Z,conts,origin='upper')
+    ax.set_xlim(0,2047)
+    ax.set_ylim(0,2047)
+    ax.contour(X, Y, Z,conts,colors='k',origin='upper')
+    ax.scatter(x,y,c='c')
+    the_divider = make_axes_locatable(ax)
+    color_axis = the_divider.append_axes("right", size="5%", pad=0.1)
+    colorbar(s,cax=color_axis)
 
 class StackAnalyzer(object):
     """
@@ -169,7 +252,6 @@ class StackAnalyzer(object):
 
         return toreturn
 
-
 class PSFStackAnalyzer(StackAnalyzer):
     """
     A specialized version of StackAnalyzer for PSF stacks.
@@ -185,59 +267,70 @@ class PSFStackAnalyzer(StackAnalyzer):
         #should have a high accuracy mode that filters the data first and finds
         #the slice with the max value before finding peaks.
 
-    @staticmethod
-    def gauss_fit(xdata, ydata, withoffset = True,trim = None, guess_z = None):
 
-        def nmoment(x, counts, c, n):
-            '''
-            A helper function to calculate moments of histograms
-            '''
-            return np.sum((x-c)**n*counts) / np.sum(counts)
+    def _fitPeaks_sub(self, fitwidth, blob, **kwargs):
+        y,x,w,amp = blob
 
-        def gauss_no_offset(x, amp, x0, sigma_x):
-            '''
-            Helper function to fit 1D Gaussians
-            '''
+        myslice = self.sliceMaker(y,x,fitwidth)
 
-            return amp*np.exp(-(x-x0)**2/(2*sigma_x**2))
+        ystart = myslice[0].start
+        xstart = myslice[1].start
 
-        def gauss(x, amp, x0, sigma_x, offset):
-            '''
-            Helper function to fit 1D Gaussians
-            '''
+        #insert the equivalent of `:` at the beginning
+        myslice.insert(0,slice(None, None, None))
 
-            return amp*np.exp(-(x-x0)**2/(2*sigma_x**2))+offset
+        substack = self.stack[myslice]
 
-        offset = ydata.min()
-        ydata_corr = ydata-offset
+        #we could do median filtering on the substack before attempting to
+        #find the max slice!
 
-        if guess_z is None:
-            x0 = nmoment(xdata,ydata_corr,0,1)
+        #this could still get messed up by salt and pepper noise.
+        #my_max = np.unravel_index(substack.argmax(),substack.shape)
+        #use the sum of each z-slice
+        my_max = substack.sum((1,2)).argmax()
+
+        #now change my slice to be that zslice
+        myslice[0] = my_max
+        substack = self.stack[myslice]
+
+        #prep our container
+        peakfits = []
+
+        #initial fit
+        max_z = Gauss2D(substack)
+        max_z.optimize_params_ls(**kwargs)
+
+        if np.isfinite(max_z.opt_params).all():
+
+            #recenter the coordinates and add a slice variable
+            opt_params = max_z.opt_params_dict()
+            opt_params['slice']=my_max
+            opt_params['x0']+=xstart
+            opt_params['y0']+=ystart
+
+            #append to our list
+            peakfits.append(opt_params.copy())
+
+            #pop the slice parameters
+            opt_params.pop('slice')
+
+            forwardrange = range(my_max+1,self.stack.shape[0])
+            backwardrange = reversed(range(0, my_max))
+
+            peakfits+=self.fitPeak(forwardrange, fitwidth, opt_params.copy(), quiet = True)
+            peakfits+=self.fitPeak(backwardrange, fitwidth, opt_params.copy(), quiet = True)
+
+            #turn everything into a data frame for easy manipulation.
+            peakfits_df = pd.DataFrame(peakfits)
+            #convert sigmas to positive values
+            peakfits_df[['sigma_x','sigma_y']] = abs(peakfits_df[['sigma_x','sigma_y']])
+
+            return peakfits_df.set_index('slice').sort()
         else:
-            x0 = guess_z
+            print('blob {} is unfittable'.format(blob))
+            return None
 
-        sigma_x = np.sqrt(nmoment(xdata,ydata_corr,x0,2))
-
-        p0 = np.array([ydata_corr.max(),x0,sigma_x, offset])
-
-        if trim is not None:
-            args =  abs(xdata-x0) < trim*sigma_x
-            xdata=xdata[args]
-            ydata=ydata[args]
-
-        try:
-            if withoffset:
-                popt, pcov = curve_fit(gauss, xdata, ydata, p0=p0)
-            else:
-                popt, pcov = curve_fit(gauss_no_offset, xdata, ydata, p0=p0[:3])
-                popt = np.insert(popt,3,offset)
-        except RuntimeError as e:
-            popt=p0*np.nan
-
-        return popt
-
-
-    def fitPeaks(self, fitwidth, **kwargs):
+    def fitPeaks(self, fitwidth, mptrue = False, **kwargs):
         '''
         Fit all peaks found by peak finder
 
@@ -254,68 +347,16 @@ class PSFStackAnalyzer(StackAnalyzer):
 
         blobs = self.peakfinder.blobs
 
-        fits = []
+        if not mptrue:
+            fits = [self._fitPeaks_sub(fitwidth, blob, **kwargs) for blob in blobs]
+        else:
+            #multiprocessing version, order **NOT** retained
+            with mp.Pool() as p:
+                fits = [p.apply_async(self._fitPeaks_sub, args=(fitwidth, blob), kwds =kwargs) for blob in blobs]
 
-        for blob in blobs:
-            y,x,w,amp = blob
-
-            myslice = self.sliceMaker(y,x,fitwidth)
-
-            ystart = myslice[0].start
-            xstart = myslice[1].start
-
-            #insert the equivalent of `:` at the beginning
-            myslice.insert(0,slice(None, None, None))
-
-            substack = self.stack[myslice]
-
-            #we could do median filtering on the substack before attempting to
-            #find the max slice!
-
-            #this could still get messed up by salt and pepper noise.
-            #my_max = np.unravel_index(substack.argmax(),substack.shape)
-            #use the sum of each z-slice
-            my_max = substack.sum((1,2)).argmax()
-
-            #now change my slice to be that zslice
-            myslice[0] = my_max
-            substack = self.stack[myslice]
-
-            #prep our container
-            peakfits = []
-
-            #initial fit
-            max_z = Gauss2D(substack)
-            max_z.optimize_params_ls(**kwargs)
-
-            if np.isfinite(max_z.opt_params).all():
-
-                #recenter the coordinates and add a slice variable
-                opt_params = max_z.opt_params_dict()
-                opt_params['slice']=my_max
-                opt_params['x0']+=xstart
-                opt_params['y0']+=ystart
-
-                #append to our list
-                peakfits.append(opt_params.copy())
-
-                #pop the slice parameters
-                opt_params.pop('slice')
-
-                forwardrange = range(my_max+1,self.stack.shape[0])
-                backwardrange = reversed(range(0, my_max))
-
-                peakfits+=self.fitPeak(forwardrange, fitwidth, opt_params.copy(), quiet = True)
-                peakfits+=self.fitPeak(backwardrange, fitwidth, opt_params.copy(), quiet = True)
-
-                #turn everything into a data frame for easy manipulation.
-                peakfits_df = pd.DataFrame(peakfits)
-                #convert sigmas to positive values
-                peakfits_df[['sigma_x','sigma_y']] = abs(peakfits_df[['sigma_x','sigma_y']])
-
-                fits.append(peakfits_df.set_index('slice').sort())
-            else:
-                print('blob {} is unfittable'.format(blob))
+                fits = [pp.get() for pp in fits]
+        #clear nones
+        fits = [fit for fit in fits if fit is not None]
 
         self.fits = fits
 
@@ -332,7 +373,7 @@ class PSFStackAnalyzer(StackAnalyzer):
             tempfit = fit.dropna().loc[subrange]
             z = tempfit.index.values
             amp, x, y, s_x, s_y =  tempfit[['amp', 'x0', 'y0', 'sigma_x', 'sigma_y']].values.T
-            popt = self.gauss_fit(z,amp,**kwargs)
+            popt = gauss_fit(z,amp,**kwargs)
             famp, z0, sigma_z, offset = popt
             x0 = np.interp(z0,z,x)
             y0 = np.interp(z0,z,y)
