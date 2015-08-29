@@ -275,6 +275,44 @@ class StackAnalyzer(object):
 
         return toreturn
 
+    def fitPeaks(self, fitwidth, nproc = 1, **kwargs):
+        '''
+        Fit all peaks found by peak finder, has the ability to split the peaks
+        among multiple processors
+
+        Parameters
+        ----------
+        fitwidth : int
+            Sets the size of the fitting window
+        nproc : int
+            number of processors to use
+
+        Returns
+        -------
+        list : list of DataFrames
+            A list of DataFrames with each DataFrame holding the fits of one peak
+        '''
+
+        blobs = self.peakfinder.blobs
+
+        if nproc == 1:
+            fits = [self._fitPeaks_sub(fitwidth, blob, **kwargs) for blob in blobs]
+        elif 1 < nproc <= os.cpu_count():
+            #multiprocessing version, order **NOT** retained
+            print('multiprocessing engaged with {} cores'.format(nproc))
+            with mp.Pool(nproc) as p:
+                fits = [p.apply_async(self._fitPeaks_sub, args=(fitwidth, blob), kwds =kwargs) for blob in blobs]
+                fits = [pp.get() for pp in fits]
+        else:
+            raise ValueError('nproc = {} while the maximum number of cores is {}'.format(nproc, os.cpu_count()))
+
+        #clear nones (i.e. unsuccessful fits)
+        fits = [fit for fit in fits if fit is not None]
+
+        self.fits = fits
+
+        return fits
+
 class PSFStackAnalyzer(StackAnalyzer):
     """
     A specialized version of StackAnalyzer for PSF stacks.
@@ -283,13 +321,10 @@ class PSFStackAnalyzer(StackAnalyzer):
     def __init__(self, stack, psfwidth = 1.68, **kwargs):
         super().__init__(stack)
         self.psfwidth = psfwidth
-
         self.peakfinder = PeakFinder(median_filter(self.stack.max(0),3),self.psfwidth,**kwargs)
-
         self.peakfinder.find_blobs()
         #should have a high accuracy mode that filters the data first and finds
         #the slice with the max value before finding peaks.
-
 
     def _fitPeaks_sub(self, fitwidth, blob, **kwargs):
         y,x,w,amp = blob
@@ -353,44 +388,162 @@ class PSFStackAnalyzer(StackAnalyzer):
             print('blob {} is unfittable'.format(blob))
             return None
 
-    def fitPeaks(self, fitwidth, nproc = 1, **kwargs):
-        '''
-        Fit all peaks found by peak finder
-
-        Parameters
-        ----------
-        fitwidth : int
-            Sets the size of the fitting window
-
-        Returns
-        -------
-        list : list of DataFrames
-            A list of DataFrames with each DataFrame holding the fits of one peak
-        '''
-
-        blobs = self.peakfinder.blobs
-
-        if nproc == 1:
-            fits = [self._fitPeaks_sub(fitwidth, blob, **kwargs) for blob in blobs]
-        elif 1 < nproc <= os.cpu_count():
-            #multiprocessing version, order **NOT** retained
-            print('multiprocessing engaged with {} cores'.format(nproc))
-            with mp.Pool(nproc) as p:
-                fits = [p.apply_async(self._fitPeaks_sub, args=(fitwidth, blob), kwds =kwargs) for blob in blobs]
-                fits = [pp.get() for pp in fits]
-        else:
-            raise ValueError('nproc = {} while the maximum number of cores is {}'.format(nproc, os.cpu_count()))
-        #clear nones
-        fits = [fit for fit in fits if fit is not None]
-
-        self.fits = fits
-
-        return fits
-
     def calc_psf_params(self,subrange = slice(None,None,None),**kwargs):
         fits = self.fits
 
         psf_params = []
+
+        for fit in fits:
+            #pull values from DataFrame
+            tempfit = fit.dropna().loc[subrange]
+            z = tempfit.index.values
+            amp, x, y, s_x, s_y =  tempfit[['amp', 'x0', 'y0', 'sigma_x', 'sigma_y']].values.T
+
+            #TODO
+            #need to make this robust to different fitting models.
+
+            #do the fit to a gaussian
+            popt = gauss_fit(z,amp,**kwargs)
+
+            #if the fit has not failed proceed
+            if np.isfinite(popt).all():
+                #pull fit parameters
+                famp, z0, sigma_z, offset = popt
+
+                #interpolate other values (linear only)
+                x0 = np.interp(z0,z,x)
+                y0 = np.interp(z0,z,y)
+                sigma_x = np.interp(z0,z,s_x)
+                sigma_y = np.interp(z0,z,s_y)
+
+                #form a dictionary for easy DataFrame creation.
+                psf_params.append({'z0' : z0, 'y0' : y0, 'x0' : x0, 'sigma_z' : abs(sigma_z), 'sigma_y' : sigma_y, 'sigma_x' : sigma_x, 'SNR' : famp/offset})
+
+        #make the DataFrame and set it as a object attribute
+        self.psf_params = pd.DataFrame(psf_params)
+
+    def plot_psf_params(self, feature):
+        psf_params = self.psf_params
+        fig, ax = scatterplot(psf_params[feature].values, psf_params.y0.values, psf_params.x0.values)
+        fig.suptitle(feature)
+
+class SIMStackAnalyzer(StackAnalyzer):
+    """
+    docstring for SIMStackAnalyser
+    """
+    def __init__(self, stack, norients, nphases, psfwidth = 1.68, **kwargs):
+        super().__init__(stack)
+
+        self.psfwidth = psfwidth
+        self.nphases = nphases
+        self.norients = norients
+
+        self.peakfinder = PeakFinder(median_filter(self.stack.max(0),3),self.psfwidth,**kwargs)
+        self.peakfinder.find_blobs()
+        #should have a high accuracy mode that filters the data first and finds
+        #the slice with the max value before finding peaks.
+
+
+    def _fitPeaks_sub(self, fitwidth, blob, **kwargs):
+        '''
+        A sub function that can be dispatched to multiple cores for processing
+
+        This function is specific to analyzing SIM data and is designed to fit
+        substacks _without_ moving the fit window (i.e. it is assumed that drift
+        is minimal).
+
+        Parameters
+        ----------
+        fitwidth : int
+            size of fitting window
+        blob : list [int]
+            a blob as returned by the find peak function
+
+        Returns
+        -------
+        df : DataFrame
+            A pandas DataFrame that contains all the fit parameters for a full
+            stack.
+        '''
+        #pull parameters from the blob
+        y,x,w,amp = blob
+
+        #generate a slice
+        myslice = self.sliceMaker(y,x,fitwidth)
+
+        #save the upper left coordinates for later use
+        ystart = myslice[0].start
+        xstart = myslice[1].start
+
+        #insert the equivalent of `:` at the beginning
+        myslice.insert(0,slice(None, None, None))
+
+        #pull the substack
+        substack = self.stack[myslice]
+
+        #fit the max projection for a good initial guess
+        max_z = Gauss2D(substack.max(0))
+        max_z.optimize_params_ls(**kwargs)
+
+        #save the initial guess for later use
+        guess_params = max_z.opt_params
+
+        #check to see if initial fit was successful, if so proceed
+        if np.isfinite(guess_params).all():
+
+            def get_params(myslice):
+                '''
+                A helper function for the list comprehension below
+
+                Takes a slice and fits a gaussian to it, makes sure to update
+                fit window coordinates to full ROI coordinates
+                '''
+
+                #set up the fit object
+                fit = Gauss2D(myslice)
+
+                #do the fit, using the guess_parameters
+                fit.optimize_params_ls(guess_params = guess_params,**kwargs)
+
+                #get the optimized parameters as a dict
+                opt = fit.opt_params_dict()
+
+                #update coordinates
+                opt['x0']+=xstart
+                opt['y0']+=ystart
+
+                #return updated coordinates
+                return opt
+
+            #prep our container
+            peakfits = [get_params(myslice) for myslice in substack]
+
+            #turn everything into a data frame for easy manipulation.
+            peakfits_df = pd.DataFrame(peakfits)
+            #convert sigmas to positive values
+            peakfits_df[['sigma_x','sigma_y']] = abs(peakfits_df[['sigma_x','sigma_y']])
+            peakfits_df.index.name = 'slice'
+
+            return peakfits_df
+        else:
+            #initial fit failed, return None
+            print('blob {} is unfittable'.format(blob))
+            return None
+
+    def fitPeaks(self, *args, **kwargs):
+        super().fitPeaks(*args,**kwargs)
+        for peak in self.fits:
+            ni = pd.MultiIndex.from_product([np.arange(self.norients),\
+                    np.arange(self.nphases)],names=['orientaion','phase'])
+            peak['ni']=ni
+            peak = peak.set_index('ni').reindex(ni)
+
+        return self.fits
+
+    def calc_sim_params(self,subrange = slice(None,None,None),**kwargs):
+        fits = self.fits
+
+        sim_params = []
 
         for fit in fits:
             #first fit the amplitudes
@@ -412,15 +565,7 @@ class PSFStackAnalyzer(StackAnalyzer):
 
         self.psf_params = pd.DataFrame(psf_params)
 
-    def plot_psf_params(self, feature):
+    def plot_sim_params(self, feature):
         psf_params = self.psf_params
         fig, ax = scatterplot(psf_params[feature].values, psf_params.y0.values, psf_params.x0.values)
         fig.suptitle(feature)
-
-class SIMStackAnalyzer(StackAnalyzer):
-    """
-    docstring for SIMStackAnalyser
-    """
-    def __init__(self, norients, nphases, **kwargs):
-        super().__init__(**kwargs)
-        self.arg = arg
