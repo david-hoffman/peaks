@@ -295,16 +295,17 @@ class StackAnalyzer(object):
 
         blobs = self.peakfinder.blobs
 
+        if nproc > os.cpu_count():
+            nproc = os.cpu_count()
+
         if nproc == 1:
             fits = [self._fitPeaks_sub(fitwidth, blob, **kwargs) for blob in blobs]
-        elif 1 < nproc <= os.cpu_count():
+        elif 1 < nproc:
             #multiprocessing version, order **NOT** retained
             print('multiprocessing engaged with {} cores'.format(nproc))
             with mp.Pool(nproc) as p:
                 fits = [p.apply_async(self._fitPeaks_sub, args=(fitwidth, blob), kwds =kwargs) for blob in blobs]
                 fits = [pp.get() for pp in fits]
-        else:
-            raise ValueError('nproc = {} while the maximum number of cores is {}'.format(nproc, os.cpu_count()))
 
         #clear nones (i.e. unsuccessful fits)
         fits = [fit for fit in fits if fit is not None]
@@ -532,40 +533,67 @@ class SIMStackAnalyzer(StackAnalyzer):
 
     def fitPeaks(self, *args, **kwargs):
         super().fitPeaks(*args,**kwargs)
+        ni = pd.MultiIndex.from_product([np.arange(3), np.arange(42)],names=['orientation','phase'])
+
         for peak in self.fits:
-            ni = pd.MultiIndex.from_product([np.arange(self.norients),\
-                    np.arange(self.nphases)],names=['orientaion','phase'])
             peak['ni']=ni
-            peak = peak.set_index('ni').reindex(ni)
+            peak.set_index('ni',inplace=True)
+
+        self.fits = [peak.reindex(ni) for peak in self.fits]
 
         return self.fits
 
-    def calc_sim_params(self,subrange = slice(None,None,None),**kwargs):
+    def calc_sim_params(self,**kwargs):
         fits = self.fits
+
+        def calc_mod(data):
+            '''
+            A utility function to calculate modulation depth
+
+            This is really a place holder until the linear prediction method
+            can be implemented.
+
+            1 is full modulation depth, 0 is none.
+            '''
+            #calculate the standard deviation
+            s = np.nanstd(data)
+            #calculate the mean
+            m = np.nanmean(data)
+            #filter data, note that the amplitude of a sinusoid is sqrt(2)*std
+            #our filter band is a little bigger
+            #NOTE: we could use masked arrays here.
+            fdata = data.copy()
+            fdata[np.abs(data-m) > 1.5*np.sqrt(2)*s] = np.nan
+            #calculate the modulation depth and return it
+            mod = (np.nanmax(fdata)-np.nanmin(fdata))/np.nanmax(fdata)
+
+            return mod
 
         sim_params = []
 
         for fit in fits:
-            #first fit the amplitudes
-            #pull values from DataFrame
-            tempfit = fit.dropna().loc[subrange]
-            z = tempfit.index.values
-            #TODO
-            #need to make this robust to different fitting models.
-            amp, x, y, s_x, s_y =  tempfit[['amp', 'x0', 'y0', 'sigma_x', 'sigma_y']].values.T
-            popt = gauss_fit(z,amp,**kwargs)
-            if np.isfinite(popt).all():
-                famp, z0, sigma_z, offset = popt
-                x0 = np.interp(z0,z,x)
-                y0 = np.interp(z0,z,y)
-                sigma_x = np.interp(z0,z,s_x)
-                sigma_y = np.interp(z0,z,s_y)
+            for i, trace in fit.groupby(level='orientation'):
+                #pull amplitude values
+                mod = calc_mod(trace.amp.values)
 
-                psf_params.append({'z0' : z0, 'y0' : y0, 'x0' : x0, 'sigma_z' : abs(sigma_z), 'sigma_y' : sigma_y, 'sigma_x' : sigma_x, 'SNR' : famp/offset})
+                #take mean and pass to dict
+                temp = trace.mean().to_dict()
+                #add orientation and modulation
+                temp['orientation']=i
+                temp['modulation']=mod
+                sim_params.append(temp)
 
-        self.psf_params = pd.DataFrame(psf_params)
+        self.sim_params = pd.DataFrame(sim_params)
 
-    def plot_sim_params(self, feature):
-        psf_params = self.psf_params
-        fig, ax = scatterplot(psf_params[feature].values, psf_params.y0.values, psf_params.x0.values)
-        fig.suptitle(feature)
+    def plot_sim_params(self,orientations = None, **kwargs):
+        sim_params = self.sim_params
+
+        for i, orient in sim_params.groupby('orientation'):
+            orient = orient.dropna()
+            if orientations is not None:
+                name = orientations[i]
+            else:
+                name = i
+
+            fig, ax = scatterplot(orient.modulation.values, orient.y0.values, orient.x0.values, **kwargs)
+            fig.suptitle('Orientation {}'.format(name))
