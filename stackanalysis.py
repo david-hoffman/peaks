@@ -9,7 +9,7 @@ from scipy.ndimage.filters import gaussian_filter, median_filter
 from scipy.optimize import curve_fit
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from matplotlib.mlab import griddata
+from scipy.interpolate import griddata
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
 
@@ -79,22 +79,26 @@ def grid(x, y, z, resX=1000, resY=1000):
 
     xi = np.linspace(x.min(), x.max(), resX)
     yi = np.linspace(y.min(), y.max(), resY)
-    Z = griddata(x, y, z, xi, yi,interp='linear')
     X, Y = np.meshgrid(xi, yi)
+    Z = griddata((x, y), z, (X, Y),method='cubic')
     return X, Y, Z
 
-def scatterplot(z, y, x,cmap = 'gnuplot2'):
+def scatterplot(z, y, x, ax = None, fig = None, cmap = 'gnuplot2'):
     '''
     A way to make a nice scatterplot with contours.
     '''
     mymax = z.max()
     mymin = z.min()
-    fig, ax = plt.subplots(1,1, squeeze=True, figsize= (6,6))
+
+    if fig is None or ax is None:
+        fig, ax = plt.subplots(1,1, squeeze=True, figsize= (6,6))
+
     X, Y, Z = grid(x,y,z)
-    conts=20
-    s= ax.contourf(X, Y, Z,conts,origin='upper',cmap = cmap)
-    ax.contour(X, Y, Z,conts,colors='k',origin='upper')
-    ax.scatter(x,y,c='c')
+    #conts=np.linspace(mymin,mymax,20,endpoint=True)
+    conts=10
+    s= ax.contourf(X, Y, Z,conts*3,origin='upper',cmap = cmap, zorder=0)
+    ax.contour(X, Y, Z,conts,colors='k',origin='upper',zorder=1)
+    ax.scatter(x,y,c='c',zorder=2)
     ax.invert_yaxis()
     the_divider = make_axes_locatable(ax)
     color_axis = the_divider.append_axes("right", size="5%", pad=0.1)
@@ -418,12 +422,13 @@ class PSFStackAnalyzer(StackAnalyzer):
                 sigma_y = np.interp(z0,z,s_y)
 
                 #form a dictionary for easy DataFrame creation.
-                psf_params.append({'z0' : z0, 'y0' : y0, 'x0' : x0, 'sigma_z' : abs(sigma_z), 'sigma_y' : sigma_y, 'sigma_x' : sigma_x, 'SNR' : famp/offset})
+                psf_params.append({'amp' : famp,'z0' : z0, 'y0' : y0, 'x0' : x0,\
+                 'sigma_z' : abs(sigma_z), 'sigma_y' : sigma_y, 'sigma_x' : sigma_x, 'SNR' : famp/offset})
 
         #make the DataFrame and set it as a object attribute
         self.psf_params = pd.DataFrame(psf_params)
 
-    def plot_psf_params(self, feature):
+    def plot_psf_params(self, feature = 'z0'):
         psf_params = self.psf_params
         fig, ax = scatterplot(psf_params[feature].values, psf_params.y0.values, psf_params.x0.values)
         fig.suptitle(feature)
@@ -533,7 +538,8 @@ class SIMStackAnalyzer(StackAnalyzer):
 
     def fitPeaks(self, *args, **kwargs):
         super().fitPeaks(*args,**kwargs)
-        ni = pd.MultiIndex.from_product([np.arange(3), np.arange(42)],names=['orientation','phase'])
+        ni = pd.MultiIndex.from_product([np.arange(self.norients),\
+         np.arange(self.nphases)],names=['orientation','phase'])
 
         for peak in self.fits:
             peak['ni']=ni
@@ -581,12 +587,15 @@ class SIMStackAnalyzer(StackAnalyzer):
                 #add orientation and modulation
                 temp['orientation']=i
                 temp['modulation']=mod
+                temp['SNR']=trace.amp.max()/trace.offset.min()
                 sim_params.append(temp)
 
         self.sim_params = pd.DataFrame(sim_params)
 
     def plot_sim_params(self,orientations = None, **kwargs):
         sim_params = self.sim_params
+
+        fig, ax = plt.subplots(1,3,figsize=(12,4))
 
         for i, orient in sim_params.groupby('orientation'):
             orient = orient.dropna()
@@ -595,5 +604,9 @@ class SIMStackAnalyzer(StackAnalyzer):
             else:
                 name = i
 
-            fig, ax = scatterplot(orient.modulation.values, orient.y0.values, orient.x0.values, **kwargs)
-            fig.suptitle('Orientation {}'.format(name))
+            scatterplot(orient.modulation.values, orient.y0.values, orient.x0.values, ax = ax[i],fig=fig, **kwargs)
+            ax[i].set_title('Orientation {}, avg mod = {:.3f}'.format(name,orient.modulation.mean()))
+
+        fig.tight_layout()
+
+        return fig, ax
