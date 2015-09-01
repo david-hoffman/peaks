@@ -190,7 +190,7 @@ class PeakFinder(object):
         #Threshold is a special variable because it needs to be scaled as well.
         #See if the user has tried to pass it
         try:
-            thresh = kwargs['threshold']
+            thresh = kwargs.pop('threshold')
         except KeyError as e:
             #if that fails then set the threshold to the object's
             thresh = self.thresh
@@ -228,7 +228,7 @@ class PeakFinder(object):
             blobs = np.array([[i[0], i[1], i[2], self.data[i[0],i[1]]] for i in blobs])
 
             #sort blobs by the max am value
-            blobs[blobs[:,3].argsort()]
+            blobs = blobs[blobs[:,3].argsort()]
 
         self._blobs = blobs
         return blobs
@@ -427,12 +427,12 @@ class PeakFinder(object):
         self._blobs = my_blobs
         return my_blobs
 
-    def plot_blobs(self, diameter = None, **kwargs):
+    def plot_blobs(self, diameter = None, size = 12, **kwargs):
 
         if self.blobs is None:
             raise UserWarning('No blobs have been found')
 
-        fig, ax = plt.subplots(1, 1,figsize=(12,12))
+        fig, ax = plt.subplots(1, 1,figsize=(size,size))
 
         ax.matshow(self.data,**kwargs)
         for blob in self.blobs:
@@ -443,7 +443,12 @@ class PeakFinder(object):
             c = plt.Circle((x, y), radius=diameter/2, color='r', linewidth=1,\
                            fill=False)
             ax.add_patch(c)
-            ax.annotate('{:.3f}'.format(self.data[y,x]), xy=(x, y),xytext = (x+diameter/2,y+diameter/2),\
+            if self.data.dtype != float:
+                fmtstr = '{}'
+            else:
+                fmtstr = '{:.3f}'
+
+            ax.annotate(fmtstr.format(self.data[y,x]), xy=(x, y),xytext = (x+diameter/2,y+diameter/2),\
                 textcoords = 'data', color='k', backgroundcolor=(1,1,1,0.5) ,xycoords='data')
 
         return fig, ax
