@@ -12,15 +12,17 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import griddata
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
+from scipy.fftpack import fft
 
 #TODO
 #Need to move all the fitting stuff into its own class and abstract as much
 #functionality from gauss2d into a parent class that can be subclassed for
 #each type of peak. Hopefully regardless of dimensionality.
 
-#theres not a huge speed up with more than ~4 cores, this might be because each
-#process needs its own copy of `stack`, or the communication overhead quickly
-#outweighs the higher processing power.
+#Need to figure out a better way to multiprocess, maybe it makes more sense to
+#to figure out how to send each stackanalyzer to each core.
+
+#Isaac suggests trying to use Mr. Job
 
 def gauss_fit(xdata, ydata, withoffset = True,trim = None, guess_z = None):
 
@@ -72,7 +74,7 @@ def gauss_fit(xdata, ydata, withoffset = True,trim = None, guess_z = None):
 
     return popt
 
-def grid(x, y, z, resX=1000, resY=1000):
+def grid(x, y, z, resX=1000, resY=1000, method = 'cubic'):
     "Convert 3 column data to matplotlib grid"
     if not np.isfinite(x+y+z).all():
         raise ValueError('x y or z is not finite')
@@ -80,24 +82,27 @@ def grid(x, y, z, resX=1000, resY=1000):
     xi = np.linspace(x.min(), x.max(), resX)
     yi = np.linspace(y.min(), y.max(), resY)
     X, Y = np.meshgrid(xi, yi)
-    Z = griddata((x, y), z, (X, Y),method='cubic')
+    Z = griddata((x, y), z, (X, Y),method=method)
     return X, Y, Z
 
-def scatterplot(z, y, x, ax = None, fig = None, cmap = 'gnuplot2'):
+def scatterplot(z, y, x, ax = None, fig = None, cmap = 'gnuplot2',**kwargs):
     '''
     A way to make a nice scatterplot with contours.
     '''
-    mymax = z.max()
-    mymin = z.min()
 
     if fig is None or ax is None:
         fig, ax = plt.subplots(1,1, squeeze=True, figsize= (6,6))
 
-    X, Y, Z = grid(x,y,z)
+    X, Y, Z = grid(x,y,z,**kwargs)
+
+    mymax = np.nanmax(z)
+    mymin = np.nanmin(z)
+
     #conts=np.linspace(mymin,mymax,20,endpoint=True)
-    conts=10
-    s= ax.contourf(X, Y, Z,conts*3,origin='upper',cmap = cmap, zorder=0)
-    ax.contour(X, Y, Z,conts,colors='k',origin='upper',zorder=1)
+    conts1=np.linspace(mymin,mymax,30)
+    conts2=np.linspace(mymin,mymax,10)
+    s= ax.contourf(X, Y, Z,conts1,origin='upper',cmap = cmap, zorder=0)
+    ax.contour(X, Y, Z,conts2,colors='k',origin='upper',zorder=1)
     ax.scatter(x,y,c='c',zorder=2)
     ax.invert_yaxis()
     the_divider = make_axes_locatable(ax)
@@ -305,11 +310,13 @@ class StackAnalyzer(object):
         if nproc == 1:
             fits = [self._fitPeaks_sub(fitwidth, blob, **kwargs) for blob in blobs]
         elif 1 < nproc:
-            #multiprocessing version, order **NOT** retained
+            #multiprocessing version, order of blobs **NOT** retained.
+            #Error here if stack is larger than 1536x1536x126
             print('multiprocessing engaged with {} cores'.format(nproc))
             with mp.Pool(nproc) as p:
-                fits = [p.apply_async(self._fitPeaks_sub, args=(fitwidth, blob), kwds =kwargs) for blob in blobs]
-                fits = [pp.get() for pp in fits]
+                par_func = self._fitPeaks_sub
+                results = [p.apply_async(par_func, args=(fitwidth, blob), kwds =kwargs) for blob in blobs]
+                fits = [pp.get() for pp in results]
 
         #clear nones (i.e. unsuccessful fits)
         fits = [fit for fit in fits if fit is not None]
@@ -428,10 +435,11 @@ class PSFStackAnalyzer(StackAnalyzer):
         #make the DataFrame and set it as a object attribute
         self.psf_params = pd.DataFrame(psf_params)
 
-    def plot_psf_params(self, feature = 'z0'):
+    def plot_psf_params(self, feature = 'z0',**kwargs):
         psf_params = self.psf_params
-        fig, ax = scatterplot(psf_params[feature].values, psf_params.y0.values, psf_params.x0.values)
-        fig.suptitle(feature)
+        fig, ax = scatterplot(psf_params[feature].values, psf_params.y0.values, psf_params.x0.values,**kwargs)
+        ax.set_title(feature)
+        return fig, ax
 
 class SIMStackAnalyzer(StackAnalyzer):
     """
@@ -450,7 +458,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         #the slice with the max value before finding peaks.
 
 
-    def _fitPeaks_sub(self, fitwidth, blob, **kwargs):
+    def _fitPeaks_sub(self, fitwidth, blob, quiet=True, **kwargs):
         '''
         A sub function that can be dispatched to multiple cores for processing
 
@@ -509,7 +517,7 @@ class SIMStackAnalyzer(StackAnalyzer):
                 fit = Gauss2D(myslice)
 
                 #do the fit, using the guess_parameters
-                fit.optimize_params_ls(guess_params = guess_params,**kwargs)
+                fit.optimize_params_ls(guess_params = guess_params, quiet=quiet,**kwargs)
 
                 #get the optimized parameters as a dict
                 opt = fit.opt_params_dict()
@@ -533,7 +541,8 @@ class SIMStackAnalyzer(StackAnalyzer):
             return peakfits_df
         else:
             #initial fit failed, return None
-            print('blob {} is unfittable'.format(blob))
+            if not quiet:
+                print('blob {} is unfittable'.format(blob))
             return None
 
     def fitPeaks(self, *args, **kwargs):
@@ -549,7 +558,7 @@ class SIMStackAnalyzer(StackAnalyzer):
 
         return self.fits
 
-    def calc_sim_params(self,**kwargs):
+    def calc_sim_params(self,modtype = 'reg',**kwargs):
         fits = self.fits
 
         def calc_mod(data):
@@ -575,12 +584,31 @@ class SIMStackAnalyzer(StackAnalyzer):
 
             return mod
 
+        def calc_mod2(data):
+
+            if not np.isfinite(trace.amp.values).all():
+                mod = np.nan
+            else:
+                try:
+                    p0 = (data.max()-data.mean(),2,0,data.mean())
+                    popt, pcov = curve_fit(sine,np.linspace(0,2*np.pi,self.nphases), data,p0=p0)
+                except RuntimeError as e:
+                    mod = np.nan
+                else:
+                    mod = 2*np.abs(popt[0])/(popt[3]+np.abs(popt[0]))
+
+            return mod
+
         sim_params = []
 
         for fit in fits:
             for i, trace in fit.groupby(level='orientation'):
                 #pull amplitude values
-                mod = calc_mod(trace.amp.values)
+
+                if modtype =='nl':
+                    mod = calc_mod2(trace.amp.values)
+                else:
+                    mod = calc_mod(trace.amp.values)
 
                 #take mean and pass to dict
                 temp = trace.mean().to_dict()
@@ -610,3 +638,51 @@ class SIMStackAnalyzer(StackAnalyzer):
         fig.tight_layout()
 
         return fig, ax
+
+    def calc_modmap(self):
+        nphases = self.nphases
+        norients = self.norients
+        stack = self.stack
+
+        #reshape stack
+        #remember that stack is phases*angles, y, x
+        nphase_angle,ny,nx = stack.shape
+
+        #check to make sure our dimensions match
+        assert nphase_angle == nphases*norients
+
+        new_stack = stack.reshape(norients,nphases,ny,nx)
+        #if we wanted to follow SIMCheck completely we'd have an Anscombe
+        #transform here #((2 * Math.sqrt((double)ab[a][b])) + (3.0d / 8))
+        #new_stack = Anscombe(new_stack)
+        #fourier transform along phases
+        fft_new_stack = np.abs(fft(new_stack,axis=1))
+
+        dc_stack = fft_new_stack[:,0]
+        #amplitudes are the 1st freq bin, because if you run 2D-SIM properly
+        #you cover exactly one period
+        amp_stack = fft_new_stack[:,1]
+        if nphases > 3:
+            #the highest frequency component is expected to be dominated by noise
+            noise_stack = fft_new_stack[:,nphases//2]
+            #average along angles and divide by average noise.
+            self.MCNR = amp_stack.mean(0)/noise_stack.mean()
+
+        #return the Amp-to-DC ratio. Max value should be 0.5
+        #the returned stack is ordered by angle
+        self.ADCR = amp_stack/dc_stack
+
+    @property
+    def ADCR(self):
+        '''
+        Amplitude to DC contrast ratio.
+
+        See doc of calc_modmap for details.
+
+        A stack of norients images.
+        '''
+        #User should not be able to modify this, so return copy
+        return self.ADCR
+
+def sine(x, amp, f, p, o):
+    return amp*np.sin(f*x+p)+o
