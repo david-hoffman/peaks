@@ -147,6 +147,8 @@ class Gauss2D(object):
         g : array_like
             A matrix of values that represent a 2D Gaussian peak. `g` will have
             the same dimensions as `x0` and `x1`
+
+        Note: Area = 2*np.pi*sigma_x*sigma_y*np.sqrt(1-rho**2)
         '''
 
         (x0, x1) = xdata_tuple
@@ -499,7 +501,7 @@ class Gauss2D(object):
         if num_params < 6:
             keys.remove('sigma_y')
 
-        return {i[0] : i[1] for i in zip(keys,params)}
+        return {k : p for k,p in zip(keys,params)}
 
     @classmethod
     def dict_to_params(cls, d):
