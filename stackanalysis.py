@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import multiprocessing as mp
 import os
+from scipy import ndimage as ndi
 from scipy.ndimage.filters import gaussian_filter, median_filter
 from scipy.optimize import curve_fit
 from matplotlib import pyplot as plt
@@ -93,7 +94,16 @@ def scatterplot(z, y, x, ax = None, fig = None, cmap = 'gnuplot2',**kwargs):
     if fig is None or ax is None:
         fig, ax = plt.subplots(1,1, squeeze=True, figsize= (6,6))
 
-    X, Y, Z = grid(x,y,z,**kwargs)
+    #split out the key words for the grid method
+    #so that the rest can be passed onto the first contourf call.
+    grid_kwargs = {}
+    for k in ('resX', 'resY', 'method'):
+        try:
+            grid_kwargs[k] = kwargs.pop(k)
+        except KeyError:
+            pass
+
+    X, Y, Z = grid(x,y,z,**grid_kwargs)
 
     mymax = np.nanmax(z)
     mymin = np.nanmin(z)
@@ -101,9 +111,16 @@ def scatterplot(z, y, x, ax = None, fig = None, cmap = 'gnuplot2',**kwargs):
     #conts=np.linspace(mymin,mymax,20,endpoint=True)
     conts1=np.linspace(mymin,mymax,30)
     conts2=np.linspace(mymin,mymax,10)
-    s= ax.contourf(X, Y, Z,conts1,origin='upper',cmap = cmap, zorder=0)
+    s= ax.contourf(X, Y, Z,conts1,origin='upper',cmap = cmap, zorder=0,**kwargs)
     ax.contour(X, Y, Z,conts2,colors='k',origin='upper',zorder=1)
-    ax.scatter(x,y,c='c',zorder=2)
+
+    #if there's more than 100 beads to fit then don't make spots
+    if len(x) > 100:
+        mark = '.'
+    else:
+        mark = 'o'
+
+    ax.scatter(x,y,c='c',zorder=2,marker =mark)
     ax.invert_yaxis()
     the_divider = make_axes_locatable(ax)
     color_axis = the_divider.append_axes("right", size="5%", pad=0.1)
@@ -246,7 +263,8 @@ class StackAnalyzer(object):
                 myslice.insert(0,s)
 
                 #set up the fit and perform it using last best params
-                fit = Gauss2D(stack[myslice])
+                sub_stack = stack[myslice]
+                fit = Gauss2D(sub_stack)
 
                 #move our guess coefs back into the window
                 popt_d['x0']-=xstart
@@ -270,7 +288,9 @@ class StackAnalyzer(object):
                     popt_d['y0']+=ystart
 
                     popt_d['slice']=s
-
+                    #calculate the apparent noise as the standard deviation
+                    #of what's the residuals of the fit
+                    popt_d['noise']= (sub_stack-fit.fit_model).std()
                     toreturn.append(popt_d.copy())
 
                     y0 = int(round(popt_d['y0']))
@@ -279,6 +299,8 @@ class StackAnalyzer(object):
                     #if the fit fails, make sure to _not_ update positions.
                     bad_fit = fit.opt_params_dict()
                     bad_fit['slice']=s
+                    #noise of a failed fit is not really useful
+                    popt_d['noise']= np.nan
 
                     toreturn.append(bad_fit.copy())
 
@@ -428,9 +450,10 @@ class PSFStackAnalyzer(StackAnalyzer):
                 sigma_x = np.interp(z0,z,s_x)
                 sigma_y = np.interp(z0,z,s_y)
 
+                noise = tempfit.noise.mean()
                 #form a dictionary for easy DataFrame creation.
                 psf_params.append({'amp' : famp,'z0' : z0, 'y0' : y0, 'x0' : x0,\
-                 'sigma_z' : abs(sigma_z), 'sigma_y' : sigma_y, 'sigma_x' : sigma_x, 'SNR' : famp/offset})
+                 'sigma_z' : abs(sigma_z), 'sigma_y' : sigma_y, 'sigma_x' : sigma_x, 'SNR' : famp/noise})
 
         #make the DataFrame and set it as a object attribute
         self.psf_params = pd.DataFrame(psf_params)
@@ -445,18 +468,51 @@ class SIMStackAnalyzer(StackAnalyzer):
     """
     docstring for SIMStackAnalyser
     """
-    def __init__(self, stack, norients, nphases, psfwidth = 1.68, **kwargs):
+    def __init__(self, stack, norients, nphases, psfwidth = 1.68, periods = 1, **kwargs):
+        #make sure the stack has the right shape
+        my_shape = stack.shape
+        assert len(my_shape) == 3, "Stack has wrong number of dimensions"
+        assert stack.shape[0] == norients*nphases, "Number of images does not equal orients*phases"
+
         super().__init__(stack)
 
         self.psfwidth = psfwidth
         self.nphases = nphases
         self.norients = norients
+        self.periods = periods
 
         self.peakfinder = PeakFinder(median_filter(self.stack.max(0),3),self.psfwidth,**kwargs)
         self.peakfinder.find_blobs()
         #should have a high accuracy mode that filters the data first and finds
         #the slice with the max value before finding peaks.
 
+    def sum_peaks(self,width):
+        '''
+        Find peaks, then sum area around them for whole stack.
+
+        If we're going to do this _properly_ we need a way to find areas that
+        _don't_ have any beads nearby inorder to calculate noise and offset.
+        '''
+        #fit the blobs first to find valid spots
+        my_peaks = self.peakfinder
+
+        peakfits = my_peaks.fit_blobs(diameter = width)
+        #now reset the blobs to the fit values
+        my_peaks.blobs = peakfits[['y0','x0','sigma_x','amp']].values
+
+        #label again
+        my_labels = my_peaks.label_blobs(diameter=width)
+
+        #find all the objects.
+        my_objects = ndi.find_objects(my_labels)
+
+        my_medians = median(self.data,axis=(1,2))
+
+        my_sums = array([self.data[:,obj[0],obj[1]].sum((1,2)) for obj in my_objects])
+
+        self.sums = my_sums-my_medians
+        #reset blobs to original
+        self.peakfinder.find_blobs()
 
     def _fitPeaks_sub(self, fitwidth, blob, quiet=True, **kwargs):
         '''
@@ -526,6 +582,9 @@ class SIMStackAnalyzer(StackAnalyzer):
                 opt['x0']+=xstart
                 opt['y0']+=ystart
 
+                #add an estimate of the noise
+                opt['noise']= (myslice-fit.fit_model).std()
+
                 #return updated coordinates
                 return opt
 
@@ -537,6 +596,8 @@ class SIMStackAnalyzer(StackAnalyzer):
             #convert sigmas to positive values
             peakfits_df[['sigma_x','sigma_y']] = abs(peakfits_df[['sigma_x','sigma_y']])
             peakfits_df.index.name = 'slice'
+
+
 
             return peakfits_df
         else:
@@ -558,8 +619,9 @@ class SIMStackAnalyzer(StackAnalyzer):
 
         return self.fits
 
-    def calc_sim_params(self,modtype = 'reg',**kwargs):
+    def calc_sim_params(self,modtype = 'nl',**kwargs):
         fits = self.fits
+        periods = self.periods
 
         def calc_mod(data):
             '''
@@ -585,17 +647,59 @@ class SIMStackAnalyzer(StackAnalyzer):
             return mod
 
         def calc_mod2(data):
+            '''
+            Need to change this so that it:
+            - first tries to fit only the amplitude and phase
+                - if that doesn't work, estimate amp and only fit phase
+            - then do full fit
+            '''
 
-            if not np.isfinite(trace.amp.values).all():
-                mod = np.nan
-            else:
+            #pull internal number of phases
+            nphases = self.nphases
+
+            #only deal with finite data
+            #NOTE: could use masked wave here.
+            finite_args = np.isfinite(data)
+            data_fixed = data[finite_args]
+
+            if len(data_fixed) > 4:
+                #we can't fit data with less than 4 points
+
+                #make x-wave
+                x = np.arange(nphases)[finite_args]
+
+                #make guesses
+                #amp of sine wave is sqrt(2) the standard deviation
+                g_a = np.sqrt(2)*(data_fixed.std())
+                #offset is mean
+                g_o = data_fixed.mean()
+                #frequency is such that `nphases` covers `periods`
+                g_f = periods/nphases
+                #guess of phase is from first data point (maybe mean of all?)
+                g_p = np.arcsin((data_fixed[0]-g_o)/g_a)-2*np.pi*g_f*x[0]
+                #make guess sequence
+                pguess = (g_a,g_f,g_p,g_o)
+
                 try:
-                    p0 = (data.max()-data.mean(),2,0,data.mean())
-                    popt, pcov = curve_fit(sine,np.linspace(0,2*np.pi,self.nphases), data,p0=p0)
-                except RuntimeError as e:
+                    popt,pcov = curve_fit(sine,x,data_fixed,p0=pguess)
+                except RuntimeError:
+                    #if fit fails, put nan
+                    mod = np.nan
+                except TypeError as e:
+                    print(e)
+                    print(data_fixed)
                     mod = np.nan
                 else:
-                    mod = 2*np.abs(popt[0])/(popt[3]+np.abs(popt[0]))
+                    opt_a,opt_f,opt_p,opt_o = popt
+                    opt_a = np.abs(opt_a)
+                    #if any part of the fit is negative, mark as failure
+                    if opt_o - opt_a < 0:
+                        mod = np.nan
+                    else:
+                        #calc mod
+                        mod = 2*opt_a/(opt_o+opt_a)
+            else:
+                mod = np.nan
 
             return mod
 
@@ -615,7 +719,8 @@ class SIMStackAnalyzer(StackAnalyzer):
                 #add orientation and modulation
                 temp['orientation']=i
                 temp['modulation']=mod
-                temp['SNR']=trace.amp.max()/trace.offset.min()
+                #calc the SNR using the noise from the fit
+                temp['SNR']=trace.amp.max()/trace.noise.mean()
                 sim_params.append(temp)
 
         self.sim_params = pd.DataFrame(sim_params)
@@ -643,6 +748,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         nphases = self.nphases
         norients = self.norients
         stack = self.stack
+        periods = self.periods
 
         #reshape stack
         #remember that stack is phases*angles, y, x
@@ -660,8 +766,9 @@ class SIMStackAnalyzer(StackAnalyzer):
 
         dc_stack = fft_new_stack[:,0]
         #amplitudes are the 1st freq bin, because if you run 2D-SIM properly
-        #you cover exactly one period
-        amp_stack = fft_new_stack[:,1]
+        #you cover exactly one period, this is accounted for with the instance
+        # property `periods`
+        amp_stack = fft_new_stack[:,periods]
         if nphases > 3:
             #the highest frequency component is expected to be dominated by noise
             noise_stack = fft_new_stack[:,nphases//2]
@@ -685,4 +792,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         return self.ADCR
 
 def sine(x, amp, f, p, o):
-    return amp*np.sin(f*x+p)+o
+    '''
+    Utility function to fit nonlinearly
+    '''
+    return amp*np.sin(2*np.pi*f*x+p)+o
