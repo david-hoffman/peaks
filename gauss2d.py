@@ -217,7 +217,7 @@ class Gauss2D(object):
     @classmethod
     def gen_model(cls, data, *args):
         '''
-        A helper class to generate a fit if needed, useful for generating
+        A helper method to generate a fit if needed, useful for generating
         residuals
 
         Parameters
@@ -239,6 +239,14 @@ class Gauss2D(object):
         xdata_tuple = (xx,yy)
 
         return cls.model(xdata_tuple, *args)
+
+    @property
+    def fit_model(self):
+        '''
+        Generate the model from this instance, if the fit hasn't been performed
+        yet an error will be raised
+        '''
+        return self.gen_model(self._data,*self._popt)
 
     def area(self,**kwargs):
         '''
