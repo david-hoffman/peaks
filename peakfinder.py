@@ -132,7 +132,7 @@ class PeakFinder(object):
         if value.ndim != 2:
             raise TypeError("Blobs don't have the right dimensions")
 
-        if value.shape[1] != 4:
+        if value.shape[-1] != 4:
             raise TypeError("Blobs don't have enough variables")
 
         #use a copy so that changes on the outside don't affect the internal
@@ -249,11 +249,11 @@ class PeakFinder(object):
         '''
 
         tolabel = np.zeros_like(self.data)
-        blobs = self.blobs
-
-        if blobs is None:
+        try:
+            blobs = self.blobs
+        except AttributeError as e:
             #try to find blobs
-            self.find_blobs()
+            blobs = self.find_blobs()
             #if blobs is still none, exit
             if blobs is None:
                 warnings.warn('Labels could not be generated', UserWarning)
@@ -276,7 +276,7 @@ class PeakFinder(object):
 
         return labels
 
-    def plot_labels(self, withfits = False, **kwargs):
+    def plot_labels(self, withfits = False,diameter = None, **kwargs):
         '''
         Generate a plot of the found peaks, individually
         '''
@@ -295,7 +295,7 @@ class PeakFinder(object):
 
         #check to see if data has been labelled
         if labels is None:
-            self.label_blobs()
+            labels = self.label_blobs(diameter=diameter)
             if labels is None:
                 warnings.warn('Labels were not available', UserWarning)
 
