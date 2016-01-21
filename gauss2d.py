@@ -66,7 +66,7 @@ class Gauss2D(object):
 
         #This attribute should be read-only, which means that it should return
         #a copy of the data not a pointer.
-        return self._data
+        return self._data.copy()
 
     @property
     def opt_params(self):
@@ -90,6 +90,9 @@ class Gauss2D(object):
 
     @property
     def error(self):
+        '''
+        Gives whether there's an error or not.
+        '''
         if self.ier in [1, 2, 3, 4]:
             return False
         else:
@@ -148,7 +151,7 @@ class Gauss2D(object):
             A matrix of values that represent a 2D Gaussian peak. `g` will have
             the same dimensions as `x0` and `x1`
 
-        Note: Area = 2*np.pi*sigma_x*sigma_y*np.sqrt(1-rho**2)
+        Note: Area = 2*amp*np.pi*sigma_x*sigma_y*np.sqrt(1-rho**2)
         '''
 
         (x0, x1) = xdata_tuple
@@ -156,6 +159,9 @@ class Gauss2D(object):
         if x0.shape != x1.shape:
             #All functions assume that data is 2D
             raise ValueError
+
+        if not abs(rho) < 1:
+            raise ValueError('rho cannot be greater than 1 or less than -1. Here rho is {}'.format(rho))
 
         z =((x0-mu0)/sigma0)**2 - 2*rho*(x0-mu0)*(x1-mu1)/(sigma0*sigma1) +\
          ((x1-mu1)/sigma1)**2
@@ -212,7 +218,7 @@ class Gauss2D(object):
             raise ValueError('len(args) = {}, number out of range!'.format(num_args))
 
         #return something in case everything is really fucked
-        return -1 #should NEVER see this
+        raise RuntimeError('Something has gone horribly wrong in the model class method')
 
     @classmethod
     def gen_model(cls, data, *args):
@@ -496,6 +502,8 @@ class Gauss2D(object):
         '''
         Helper function to return a version of params in dictionary form to make
         the user interface a little more friendly
+        >>> Gauss2D._params_dict((1, 2, 3, 4, 5, 6, 7)) == {'amp': 1, 'x0': 2, 'y0': 3, 'sigma_x': 4, 'sigma_y': 5, 'rho': 6, 'offset': 7}
+        True
         '''
 
         keys = ['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'rho', 'offset']
@@ -516,6 +524,9 @@ class Gauss2D(object):
         '''
         Helper function to return a version of params in dictionary form to make
         the user interface a little more friendly
+
+        >>> Gauss2D.dict_to_params({'amp' : 1, 'x0' : 2,  'y0' : 3, 'sigma_x' : 4, 'sigma_y' : 5, 'rho' : 6, 'offset' : 7})
+        array([1, 2, 3, 4, 5, 6, 7])
         '''
 
         keys = ['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'rho', 'offset']
@@ -533,12 +544,17 @@ class Gauss2D(object):
         return self._params_dict(self.opt_params)
 
     def guess_params_dict(self):
-        return _params_dict(self.guess_params)
+        '''
+        >>> import numpy as np
+        >>> myg = Gauss2D(np.random.randn(10,10))
+        >>> myg.guess_params = np.array([1, 2, 3, 4, 5, 6, 7])
+        >>> myg.guess_params_dict() == {'amp' : 1, 'x0' : 2,  'y0' : 3, 'sigma_x' : 4, 'sigma_y' : 5, 'rho' : 6, 'offset' : 7}
+        True
+        '''
+        return self._params_dict(self.guess_params)
 
     def optimize_params_mle(self):
-        print('This function has not been implemented yet, passing to\
-                optimize_params_ls.')
-        return optimize_params_ls(self)
+        raise NotImplementedError
 
     def plot(self):
         fig, ax = plt.subplots(1,1,squeeze = True)
