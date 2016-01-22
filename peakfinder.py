@@ -201,7 +201,6 @@ class PeakFinder(object):
         except KeyError as e:
             #if that fails then set the threshold to the object's
             thresh = self.thresh
-
         #now scale the threshold the same as we did for the data
         scaled_thresh = (float(thresh)-dmin)/(dmax-dmin)
         #take care of the default kwargs with 'good' values
@@ -501,10 +500,13 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6, threshold
     References
     ----------
     .. [1] http://en.wikipedia.org/wiki/Blob_detection#The_difference_of_Gaussians_approach
+    Notes
+    -----
+        The radius of each blob is approximately :math:`\sqrt{2}sigma`.
     Examples
     --------
     >>> from skimage import data, feature
-    >>> feature.blob_dog(data.coins(), threshold=.5, max_sigma=40)
+    >>> better_blob_dog(data.coins(), threshold=.5, max_sigma=40)
     array([[  45.      ,  336.      ,   16.777216],
            [  52.      ,  155.      ,   16.777216],
            [  52.      ,  216.      ,   16.777216],
@@ -529,9 +531,7 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6, threshold
            [ 263.      ,  302.      ,   16.777216],
            [ 267.      ,  115.      ,   10.48576 ],
            [ 267.      ,  359.      ,   16.777216]])
-    Notes
-    -----
-    The radius of each blob is approximately :math:`\sqrt{2}sigma`.
+
     """
     assert_nD(image, 2)
 
