@@ -417,7 +417,7 @@ class PSFStackAnalyzer(StackAnalyzer):
             #convert sigmas to positive values
             peakfits_df[['sigma_x','sigma_y']] = abs(peakfits_df[['sigma_x','sigma_y']])
 
-            return peakfits_df.set_index('slice').sort()
+            return peakfits_df.set_index('slice').sort_index()
         else:
             print('blob {} is unfittable'.format(blob))
             return None
@@ -644,7 +644,7 @@ class SIMStackAnalyzer(StackAnalyzer):
             #calculate the modulation depth and return it
             mod = (np.nanmax(fdata)-np.nanmin(fdata))/np.nanmax(fdata)
 
-            return mod
+            return {"modulation" : mod}
 
         def calc_mod2(data):
             '''
@@ -685,10 +685,18 @@ class SIMStackAnalyzer(StackAnalyzer):
                 except RuntimeError:
                     #if fit fails, put nan
                     mod = np.nan
+                    opt_a = np.nan
+                    opt_f = np.nan
+                    opt_p = np.nan
+                    opt_o = np.nan
                 except TypeError as e:
                     print(e)
                     print(data_fixed)
                     mod = np.nan
+                    opt_a = np.nan
+                    opt_f = np.nan
+                    opt_p = np.nan
+                    opt_o = np.nan
                 else:
                     opt_a,opt_f,opt_p,opt_o = popt
                     opt_a = np.abs(opt_a)
@@ -700,35 +708,42 @@ class SIMStackAnalyzer(StackAnalyzer):
                         mod = 2*opt_a/(opt_o+opt_a)
             else:
                 mod = np.nan
+                opt_a = np.nan
+                opt_f = np.nan
+                opt_p = np.nan
+                opt_o = np.nan
 
-            return mod
+            return {'modulation' : mod, 'amp' : opt_a, 'freq' : opt_f, 'phase' : opt_p, 'offset' : opt_o}
 
         sim_params = []
 
         for fit in fits:
-            for i, trace in fit.groupby(level='orientation'):
-                #pull amplitude values
+            for i, trace in fit.dropna().groupby(level='orientation'):
 
+                #pull amplitude values
                 if modtype =='nl':
-                    mod = calc_mod2(trace.amp.values)
+                    params = calc_mod2(trace.amp.values)
                 else:
-                    mod = calc_mod(trace.amp.values)
+                    params = calc_mod(trace.amp.values)
 
                 #take mean and pass to dict
                 temp = trace.mean().to_dict()
                 #add orientation and modulation
                 temp['orientation']=i
-                temp['modulation']=mod
+                #copy params over to temp for output
+                for k,v in params.items():
+                    temp[k] = v
+
                 #calc the SNR using the noise from the fit
-                temp['SNR']=trace.amp.max()/trace.noise.mean()
+                temp['SNR']=(trace.amp/trace.noise).max()
                 sim_params.append(temp)
 
         self.sim_params = pd.DataFrame(sim_params)
 
     def plot_sim_params(self,orientations = None, **kwargs):
         sim_params = self.sim_params
-
-        fig, ax = plt.subplots(1,3,figsize=(12,4))
+        norients = self.norients
+        fig, ax = plt.subplots(1,norients,figsize=(4*norients,4))
 
         for i, orient in sim_params.groupby('orientation'):
             orient = orient.dropna()
