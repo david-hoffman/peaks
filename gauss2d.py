@@ -218,7 +218,7 @@ class Gauss2D(object):
             raise ValueError('len(args) = {}, number out of range!'.format(num_args))
 
         #return something in case everything is really fucked
-        raise RuntimeError('Something has gone horribly wrong in the model class method')
+        #raise RuntimeError('Something has gone horribly wrong in the model class method')
 
     @classmethod
     def gen_model(cls, data, *args):
@@ -397,7 +397,14 @@ class Gauss2D(object):
             self._popt = guess_params*np.nan
             self._pcov = np.zeros((len(guess_params),len(guess_params)))*np.nan
 
-        #return copy to user
+        if not self.error:
+            #if no fitting error calc residuals and noise
+            self.residuals = self.data-self.fit_model
+            self.noise = self.residuals.std()
+        else:
+            #if there is an error set the noise to nan
+            self.noise = np.nan
+
         return self.opt_params
 
     def _check_params(self, popt):
@@ -502,7 +509,11 @@ class Gauss2D(object):
         '''
         Helper function to return a version of params in dictionary form to make
         the user interface a little more friendly
-        >>> Gauss2D._params_dict((1, 2, 3, 4, 5, 6, 7)) == {'amp': 1, 'x0': 2, 'y0': 3, 'sigma_x': 4, 'sigma_y': 5, 'rho': 6, 'offset': 7}
+
+        Examples
+        --------
+        >>> Gauss2D._params_dict((1, 2, 3, 4, 5, 6, 7)) ==
+        ... {'amp': 1, 'x0': 2, 'y0': 3, 'sigma_x': 4, 'sigma_y': 5, 'rho': 6, 'offset': 7}
         True
         '''
 
