@@ -355,6 +355,7 @@ class PSFStackAnalyzer(StackAnalyzer):
     def __init__(self, stack, psfwidth = 1.68, **kwargs):
         super().__init__(stack)
         self.psfwidth = psfwidth
+        #median filter to remove spikes
         self.peakfinder = PeakFinder(median_filter(self.stack.max(0),3),self.psfwidth,**kwargs)
         self.peakfinder.find_blobs()
         #should have a high accuracy mode that filters the data first and finds

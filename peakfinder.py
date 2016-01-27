@@ -180,8 +180,13 @@ class PeakFinder(object):
 
         Parameters
         ----------
-        min_sigma : floatsmallest sigma for DOG
+        min_sigma : float
+            smallest sigma for DOG
 
+        Returns
+        -------
+        blobs : ndarray
+            blob parameters ordered as `y`, `x`, `sigma`, `amp`
         '''
 
         #scale the data to the interval of [0,1], the DOG algorithm works best
@@ -234,7 +239,7 @@ class PeakFinder(object):
             #the estimated center as well
             blobs = np.array([[y, x, s,self.data[y,x]] for y, x, s in blobs])
 
-            #sort blobs by the max am value
+            #sort blobs by the max amp value
             blobs = blobs[blobs[:,3].argsort()]
 
         self._blobs = blobs
@@ -360,9 +365,9 @@ class PeakFinder(object):
                 return None
 
         my_objects = find_objects(labels)
-        peakfits = pd.DataFrame(index=np.arange(len(my_objects)),\
-         columns=['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'rho', 'offset'], dtype=float)
-
+        #peakfits = pd.DataFrame(index=np.arange(len(my_objects)),\
+         #columns=['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'rho', 'offset', 'SNR'], dtype=float)
+        peakfits = []
         for i, obj in enumerate(my_objects):
             mypeak = Gauss2D(data[obj])
             mypeak.optimize_params_ls(modeltype = self.modeltype, quiet = quiet)
@@ -371,15 +376,24 @@ class PeakFinder(object):
             #need to place the fit coefs in the right place
             fit_coefs['y0'] += obj[0].start
             fit_coefs['x0'] += obj[1].start
+            #Calc SNR for each peak
+            fit_coefs['SNR'] = fit_coefs['amp']/mypeak.noise
 
-            peakfits.loc[i] = fit_coefs
+            peakfits.append(fit_coefs)
+            #TODO: Change this to forming a list of dictionaries which is then
+            #passed to the DataFrame constructor.
 
         #we know that when the fit fails it returns 0, so replace with NaN
-        peakfits.replace(0,np.NaN)
-        peakfits[['sigma_x','sigma_y']] = np.abs(peakfits[['sigma_x','sigma_y']])
-        self._fits = peakfits
+        peakfits_df = pd.DataFrame(peakfits)
+        peakfits_df.sigma_x = np.abs(peakfits_df.sigma_x)
+        try:
+            peakfits_df.sigma_y = np.abs(peakfits_df.sigma_y)
+        except AttributeError:
+            pass
 
-        return peakfits
+        self._fits = peakfits_df
+
+        return peakfits_df
 
 
     def prune_blobs(self,diameter):
@@ -393,8 +407,8 @@ class PeakFinder(object):
             Parameters
             ----------
             blobs : ndarray
-                A 2d array with each row representing 3 values, ``(y,x,intensity)``
-                where ``(y,x)`` are coordinates of the blob and ``intensity`` is the
+                A 2d array with each row representing 3 values, `(y,x,intensity)`
+                where `(y,x)` are coordinates of the blob and `intensity` is the
                 intensity of the blob (value at (x,y)).
             diameter : float
                 Allowed spacing between blobs
