@@ -19,6 +19,8 @@ from matplotlib import pyplot as plt
 
 #Eventually we'll want to abstract the useful, abstract bits of this class to a
 #parent class called peak that will allow for multiple types of fits
+
+#rho = cos(theta)
 class Gauss2D(object):
     """
     A class that encapsulates experimental data that is best modeled by a 2D
@@ -334,6 +336,9 @@ class Gauss2D(object):
         #define our function for fitting
         def model_ravel(*args) : return self.model(*args).ravel()
 
+        #We also need a function to clear nan values from data and the associated
+        #xx and yy points.
+
         #Here we fit the data but we catch any errors and instead set the
         #optimized parameters to nan.
 
@@ -512,8 +517,8 @@ class Gauss2D(object):
 
         Examples
         --------
-        >>> Gauss2D._params_dict((1, 2, 3, 4, 5, 6, 7)) ==
-        ... {'amp': 1, 'x0': 2, 'y0': 3, 'sigma_x': 4, 'sigma_y': 5, 'rho': 6, 'offset': 7}
+        >>> Gauss2D._params_dict((1, 2, 3, 4, 5, 6, 7)) == {'amp': 1,
+        ... 'x0': 2, 'y0': 3, 'sigma_x': 4, 'sigma_y': 5, 'rho': 6, 'offset': 7}
         True
         '''
 
