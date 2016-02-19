@@ -215,20 +215,18 @@ class PeakFinder(object):
                             'threshold': scaled_thresh
                         }
 
-        # set default values for kwargs before passing along
-        for k, v in default_kwargs.items():
-            if k not in kwargs.keys():
-                kwargs[k] = v
+        # update default_kwargs with user passed kwargs
+        default_kwargs.update(kwargs)
 
         # double check sigmas
-        if kwargs['min_sigma'] >= kwargs['max_sigma']:
-            kwargs['max_sigma'] = kwargs['min_sigma']*1.6**2
+        if default_kwargs['min_sigma'] >= default_kwargs['max_sigma']:
+            default_kwargs['max_sigma'] = default_kwargs['min_sigma']*1.6**2
 
         # Perform the DOG
         if method.lower() == 'dog':
             # NOTE: the threshold for `blob_dog` is the threshold in scale
             # space i.e. the threshold is not intuitively clear.
-            blobs = better_blob_dog(scaled_data, **kwargs)
+            blobs = better_blob_dog(scaled_data, **default_kwargs)
         else:
             blobs = None
 
