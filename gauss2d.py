@@ -14,9 +14,6 @@ from skimage.measure import moments
 from scipy.optimize import OptimizeWarning
 # import curve_fit in a way that we can monkey patch it.
 import scipy.optimize.minpack as mp
-old_general_func = mp._general_function
-old_weighted_general_func = mp._weighted_general_function
-curve_fit = mp.curve_fit
 
 # need to detrend data before estimating parameters
 from .utils import detrend
@@ -35,11 +32,25 @@ def _general_function_mle(params, xdata, ydata, function):
     f = function(xdata, *params)
     # calculate the MLE version of chi2
     chi2 = 2*(f - ydata - ydata * np.log(f/ydata))
-    # return the sqrt because the np.leastsq will square and sum the result
-    return np.sqrt(np.nan_to_num(chi2))
+    if chi2.min() < 0:
+        # jury rigged to enforce positivity
+        # once scipy 0.17 is released this won't be necessary.
+        return np.nan_to_num(inf)*ones_like(chi2)
+    else:
+        # return the sqrt because the np.leastsq will square and sum the result
+        return np.sqrt(chi2)
+
 
 def _weighted_general_function_mle(params, xdata, ydata, function, weights):
-    return weights * (_general_function_mle(params, xdata, ydata, function))
+    return weights * _general_function_mle(params, xdata, ydata, function)
+
+
+def _general_function_ls(params, xdata, ydata, function):
+    return function(xdata, *params) - ydata
+
+
+def _weighted_general_function_ls(params, xdata, ydata, function, weights):
+    return weights * _general_function_ls(params, xdata, ydata, function)
 
 
 class Gauss2D(object):
@@ -250,6 +261,102 @@ class Gauss2D(object):
                 )
 
     @classmethod
+    def gauss2D_jac(cls, params, xdata):
+        x0 = xdata[0].ravel()
+        x1 = xdata[1].ravel()
+        amp, mu0, mu1, sigma0, sigma1, rho, offset = params
+        # calculate the main value, minus offset
+        # (derivative of constant is zero)
+        value = cls.gauss2D(xdata, *params).ravel()-offset
+        dydamp = value/amp
+        dydmu0 = value * (
+                (2*(x0-mu0))/sigma0**2 - (2*rho*(x1-mu1))/(sigma0 * sigma1)
+            )
+        dydsigma0 = value * (
+                ((x0-mu0)**2/sigma0**3) -
+                ((2 * rho * (x0 - mu0) * (x1 - mu1))/(sigma0**2 * sigma1))
+            )
+        dydmu1 = value * (
+                (2*(x1-mu1))/sigma1**2 - (2*rho*(x0-mu0))/(sigma0 * sigma1)
+            )
+        dydsigma1 = value * (
+                ((x1-mu1)**2/sigma1**3) -
+                ((2 * rho * (x0 - mu0) * (x1 - mu1))/(sigma1**2 * sigma0))
+            )
+        dydrho = (((-mu0 + x0)*(x1-mu1))/((1 - rho**2) * sigma0 * sigma1) +
+                  (
+                rho*(-((x0-mu0)**2/sigma0**2) + (2 * rho * (x0-mu0) * (x1-mu1)
+            )/(sigma0 * sigma1) - (x1-mu1)**2/sigma1**2))/(1 - rho**2)**2)
+        # now return
+        return np.vstack((dydamp, dydmu0, dydmu1, dydsigma0, dydsigma1, dydrho,
+                          np.ones_like(value)))
+
+    @classmethod
+    def gauss2D_norot_jac(cls, params, xdata):
+        x = xdata[0].ravel()
+        y = xdata[1].ravel()
+        amp, x0, y0, sigma_x, sigma_y, offset = params
+        value = cls.gauss2D_norot(xdata, *params).ravel()-offset
+        dydamp = value/amp
+        dydx0 = value*(x-x0)/sigma_x**2
+        dydsigmax = value*(x-x0)**2/sigma_x**3
+        dydy0 = value*(y-y0)/sigma_y**2
+        dydsigmay = value*(y-y0)**2/sigma_y**3
+        return np.vstack((dydamp, dydx0, dydy0, dydsigmax,
+                          dydsigmay, np.ones_like(value)))
+        # the below works, but speed up only for above
+        # new_params = np.insert(params, 5, 0)
+        # return np.delete(cls.gauss2D_jac(new_params, xdata), 5, axis=0)
+
+    @classmethod
+    def gauss2D_sym_jac(cls, params, xdata):
+        x = xdata[0].ravel()
+        y = xdata[1].ravel()
+        amp, x0, y0, sigma_x, offset = params
+        value = cls.gauss2D_sym(xdata, *params).ravel()-offset
+        dydamp = value/amp
+        dydx0 = value*(x-x0)/sigma_x**2
+        dydsigmax = value*(x-x0)**2/sigma_x**3
+        dydy0 = value*(y-y0)/sigma_x**2
+        return np.vstack((dydamp, dydx0, dydy0, dydsigmax,
+                          np.ones_like(value)))
+        # new_params = np.insert(params, 4, 0)
+        # new_params = np.insert(new_params, 4, params[3])
+        # return np.delete(cls.gauss2D_jac(new_params, xdata), (4, 5), axis=0)
+
+    @classmethod
+    def model_jac(cls, params, xdata_tuple, ydata, func):
+        '''
+        Chooses the correct model jacobian function to use based on the number
+        of arguments passed to it
+
+        Parameters
+        ----------
+        xdata_tuple : tuple of ndarrays (xx, yy)
+            The independent data
+
+        Returns
+        -------
+        modeldata :
+
+        Other Parameters
+        ----------------
+        *args : model parameters
+        '''
+        num_args = len(params)
+
+        if num_args == 5:
+            return cls.gauss2D_sym_jac(params, xdata_tuple)
+        elif num_args == 6:
+            return cls.gauss2D_norot_jac(params, xdata_tuple)
+        elif num_args == 7:
+            return cls.gauss2D_jac(params, xdata_tuple)
+        else:
+            raise ValueError(
+                'len(params) = {}, number out of range!'.format(num_args)
+                )
+
+    @classmethod
     def gen_model(cls, data, *args):
         '''
         A helper method to generate a fit if needed, useful for generating
@@ -313,7 +420,8 @@ class Gauss2D(object):
             return abs(2*np.pi*opt_params[0]*opt_params[3]**2)
 
     def optimize_params(self, guess_params=None, modeltype='norot',
-                           quiet=False, check_params=True, detrenddata=False):
+                        quiet=False, check_params=True, detrenddata=False,
+                        fit_type='ls'):
         '''
         A function that will optimize the parameters for a 2D Gaussian model
         using a least squares method
@@ -359,7 +467,8 @@ class Gauss2D(object):
         yy, xx = np.indices(data.shape)
 
         # define our function for fitting
-        def model_ravel(*args): return self.model(*args).ravel()
+        def model_ravel(*args):
+            return self.model(*args).ravel()
 
         # We also need a function to clear nan values from data and the
         # associated xx and yy points.
@@ -378,24 +487,26 @@ class Gauss2D(object):
             # we'll catch this error later and alert the user with a printout
             warnings.simplefilter("ignore", OptimizeWarning)
 
-            if False:
-                # monkey patch!
+            if fit_type.lower() == 'mle':
+                # monkey patch in mle functions
                 mp._general_function = _general_function_mle
                 mp._weighted_general_function = _weighted_general_function_mle
-                upper_bound = np.ones_like(guess_params)*np.inf
-                lower_bound = np.ones_like(guess_params)*(-np.inf)
-                lower_bound[0] = 0
-                lower_bound[-1] = 0
-                bounds = (lower_bound, upper_bound)
+                # upper_bound = np.ones_like(guess_params)*np.inf
+                # lower_bound = np.ones_like(guess_params)*(-np.inf)
+                # lower_bound[0] = 0
+                # lower_bound[-1] = 0
+                # bounds = (lower_bound, upper_bound)
             else:
-                mp._general_function = old_general_func
-                mp._weighted_general_function = old_weighted_general_func
-                bounds=(-np.inf, np.inf)
+                # use standard ls
+                mp._general_function = _general_function_ls
+                mp._weighted_general_function = _weighted_general_function_ls
+                # bounds = (-np.inf, np.inf)
 
             try:
-                popt, pcov, infodict, errmsg, ier = curve_fit(
+                # need to add bounds here when scipy 0.17 is released
+                popt, pcov, infodict, errmsg, ier = mp.curve_fit(
                     model_ravel, (xx, yy), data.ravel(), p0=guess_params,
-                    full_output=True)
+                    full_output=True, Dfun=self.model_jac, col_deriv=True)
             except RuntimeError as e:
                 # print(e)
                 # now we need to re-parse the error message to set all the
@@ -623,13 +734,13 @@ class Gauss2D(object):
         >>> myg = Gauss2D(np.random.randn(10, 10))
         >>> myg.guess_params = np.array([1, 2, 3, 4, 5, 6, 7])
         >>> myg.guess_params_dict() == {
-        ...     'amp' : 1,
-        ...     'x0' : 2,
-        ...     'y0' : 3,
-        ...     'sigma_x' : 4,
-        ...     'sigma_y' : 5,
-        ...     'rho' : 6,
-        ...     'offset' : 7}
+        ...     'amp': 1,
+        ...     'x0': 2,
+        ...     'y0': 3,
+        ...     'sigma_x': 4,
+        ...     'sigma_y': 5,
+        ...     'rho': 6,
+        ...     'offset': 7}
         True
         '''
         return self._params_dict(self.guess_params)
