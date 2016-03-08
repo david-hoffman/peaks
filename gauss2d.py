@@ -4,16 +4,22 @@
 Class for generating and fitting 2D Gaussian peaks
 '''
 
+# need to be able to deal with warnings
+import warnings
 # numpy for numerical
 import numpy as np
 # need measure to take image moments
 from skimage.measure import moments
 # need basic curve fitting
-from scipy.optimize import curve_fit, OptimizeWarning
+from scipy.optimize import OptimizeWarning
+# import curve_fit in a way that we can monkey patch it.
+import scipy.optimize.minpack as mp
+old_general_func = mp._general_function
+old_weighted_general_func = mp._weighted_general_function
+curve_fit = mp.curve_fit
+
 # need to detrend data before estimating parameters
 from .utils import detrend
-# need to be able to deal with warnings
-import warnings
 # Plotting
 from matplotlib import pyplot as plt
 
@@ -21,6 +27,19 @@ from matplotlib import pyplot as plt
 # class to a parent class called peak that will allow for multiple types
 # of fits
 # rho = cos(theta)
+
+
+# Functions to monkey patch in...
+def _general_function_mle(params, xdata, ydata, function):
+    # calculate the function
+    f = function(xdata, *params)
+    # calculate the MLE version of chi2
+    chi2 = 2*(f - ydata - ydata * np.log(f/ydata))
+    # return the sqrt because the np.leastsq will square and sum the result
+    return np.sqrt(np.nan_to_num(chi2))
+
+def _weighted_general_function_mle(params, xdata, ydata, function, weights):
+    return weights * (_general_function_mle(params, xdata, ydata, function))
 
 
 class Gauss2D(object):
@@ -271,7 +290,7 @@ class Gauss2D(object):
         Parameters
         ----------
         kwargs : dictionary
-            key word arguments to pass to `optimize_params_ls`, only used if
+            key word arguments to pass to `optimize_params`, only used if
             `opt_params` has not been caculated yet.
 
         Returns
@@ -280,7 +299,7 @@ class Gauss2D(object):
         '''
 
         if self._popt is None:
-            self.optimize_params_ls(**kwargs)
+            self.optimize_params(**kwargs)
 
         opt_params = self.opt_params
         num_params = len(opt_params)
@@ -293,7 +312,7 @@ class Gauss2D(object):
         else:
             return abs(2*np.pi*opt_params[0]*opt_params[3]**2)
 
-    def optimize_params_ls(self, guess_params=None, modeltype='norot',
+    def optimize_params(self, guess_params=None, modeltype='norot',
                            quiet=False, check_params=True, detrenddata=False):
         '''
         A function that will optimize the parameters for a 2D Gaussian model
@@ -337,9 +356,7 @@ class Gauss2D(object):
 
         # remember that image data generally has the higher dimension first
         # as do most python objects
-        y = np.arange(data.shape[0])
-        x = np.arange(data.shape[1])
-        xx, yy = np.meshgrid(x, y)
+        yy, xx = np.indices(data.shape)
 
         # define our function for fitting
         def model_ravel(*args): return self.model(*args).ravel()
@@ -360,6 +377,20 @@ class Gauss2D(object):
         with warnings.catch_warnings():
             # we'll catch this error later and alert the user with a printout
             warnings.simplefilter("ignore", OptimizeWarning)
+
+            if False:
+                # monkey patch!
+                mp._general_function = _general_function_mle
+                mp._weighted_general_function = _weighted_general_function_mle
+                upper_bound = np.ones_like(guess_params)*np.inf
+                lower_bound = np.ones_like(guess_params)*(-np.inf)
+                lower_bound[0] = 0
+                lower_bound[-1] = 0
+                bounds = (lower_bound, upper_bound)
+            else:
+                mp._general_function = old_general_func
+                mp._weighted_general_function = old_weighted_general_func
+                bounds=(-np.inf, np.inf)
 
             try:
                 popt, pcov, infodict, errmsg, ier = curve_fit(
@@ -602,9 +633,6 @@ class Gauss2D(object):
         True
         '''
         return self._params_dict(self.guess_params)
-
-    def optimize_params_mle(self):
-        raise NotImplementedError
 
     def plot(self):
         fig, ax = plt.subplots(1, 1, squeeze=True)

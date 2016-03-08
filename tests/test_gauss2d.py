@@ -166,7 +166,7 @@ class TestGauss2D(unittest.TestCase):
 #
 #     guessparams = noisy_data.estimate_params()
 #
-#     noisy_data.optimize_params_ls(guessparams)
+#     noisy_data.optimize_params(guessparams)
 #
 #     noisy_data_estimate = Gauss2D.model((xx,yy),*noisy_data.get_guess_params())
 #

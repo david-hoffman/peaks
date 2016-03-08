@@ -282,7 +282,7 @@ class StackAnalyzer(object):
                 popt_d['y0'] -= ystart
                 # leave this in for now for easier debugging in future.
                 try:
-                    fit.optimize_params_ls(popt_d, **kwargs)
+                    fit.optimize_params(popt_d, **kwargs)
                 except TypeError as e:
                     print(repr(myslice))
                     raise e
@@ -290,7 +290,7 @@ class StackAnalyzer(object):
                 # if there was an error performing the fit, try again without
                 # a guess
                 if fit.error:
-                    fit.optimize_params_ls(modeltype=modeltype, **kwargs)
+                    fit.optimize_params(modeltype=modeltype, **kwargs)
 
                 # if there's not an error update center of fitting window and
                 # move on to the next fit
@@ -409,7 +409,7 @@ class PSFStackAnalyzer(StackAnalyzer):
 
         # initial fit
         max_z = Gauss2D(substack)
-        max_z.optimize_params_ls(**kwargs)
+        max_z.optimize_params(**kwargs)
 
         if np.isfinite(max_z.opt_params).all():
 
@@ -592,7 +592,7 @@ class SIMStackAnalyzer(StackAnalyzer):
 
         # fit the max projection for a good initial guess
         max_z = Gauss2D(substack.max(0))
-        max_z.optimize_params_ls(**kwargs)
+        max_z.optimize_params(**kwargs)
 
         # save the initial guess for later use
         guess_params = max_z.opt_params
@@ -612,7 +612,7 @@ class SIMStackAnalyzer(StackAnalyzer):
                 fit = Gauss2D(myslice)
 
                 # do the fit, using the guess_parameters
-                fit.optimize_params_ls(guess_params=guess_params,
+                fit.optimize_params(guess_params=guess_params,
                                        quiet=quiet, **kwargs)
 
                 # get the optimized parameters as a dict

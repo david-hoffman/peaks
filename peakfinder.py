@@ -373,7 +373,7 @@ class PeakFinder(object):
         peakfits = []
         for i, obj in enumerate(my_objects):
             mypeak = Gauss2D(data[obj])
-            mypeak.optimize_params_ls(modeltype=self.modeltype, quiet=quiet)
+            mypeak.optimize_params(modeltype=self.modeltype, quiet=quiet)
             fit_coefs = mypeak.opt_params_dict()
 
             # need to place the fit coefs in the right place
