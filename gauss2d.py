@@ -63,7 +63,7 @@ class Gauss2D(object):
     Right now the class assumes that `data` has constant spacing
     """
 
-    def __init__(self, data, **kwargs):
+    def __init__(self, data):
         '''
         Holds experimental equi-spaced 2D-data best represented by a Gaussian
 
@@ -91,7 +91,7 @@ class Gauss2D(object):
         self.ier = None
         self.noise = None
         self.residuals = None
-        super().__init__(**kwargs)
+        super().__init__()
 
     ########################
     # PROPERTY DEFINITIONS #
@@ -728,8 +728,8 @@ class Gauss2D(object):
     @classmethod
     def dict_to_params(cls, d):
         '''
-        Helper function to return a version of params in dictionary form
-        to make the user interface a little more friendly
+        Helper function that takes a dictionary of params and returns
+        a version that can be used internally.
 
         >>> Gauss2D.dict_to_params({
         ...     'amp': 1,

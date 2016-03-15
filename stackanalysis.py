@@ -155,7 +155,7 @@ class StackAnalyzer(object):
         '''
         raise NotImplementedError
 
-    def sliceMaker(self, y0, x0, width):
+    def slice_maker(self, y0, x0, width):
         '''
         A utility function to generate slices for later use.
 
@@ -206,119 +206,12 @@ class StackAnalyzer(object):
 
         # check to see if we've made valid slices, if not raise an error
         if ystart >= yend or xstart >= xend:
-            raise RuntimeError('sliceMaker made a zero length slice ' +
+            raise RuntimeError('slice_maker made a zero length slice ' +
                                repr(toreturn))
         # return a list of slices
         return toreturn
 
-    def fitPeak(self, slices, width, startingfit, **kwargs):
-        '''
-        Method to fit a peak through the stack.
-
-        The method will track the peak through the stack, assuming that moves
-        are relatively small from one slice to the next
-
-        Parameters
-        ----------
-        slices : iterator
-            an iterator which dictates which slices to fit, should yeild
-            integers only
-
-        width : integer
-            width of fitting window
-
-        startingfit : dict
-            fit coefficients
-
-        Returns
-        -------
-        list : list of dicts
-            A list of dictionaries containing the best fits. Easy to turn into
-            a DataFrame
-
-        '''
-
-        # pull stack
-        stack = self.stack
-
-        # set up our variable to return
-        toreturn = []
-
-        # grab the starting fit parameters
-        popt_d = startingfit.copy()
-
-        y0 = int(round(popt_d['y0']))
-        x0 = int(round(popt_d['x0']))
-
-        if len(popt_d) == 6:
-            modeltype = 'norot'
-        elif len(popt_d) == 5:
-            modeltype = 'sym'
-        else:
-            modeltype = 'full'
-
-        for s in slices:
-
-            # make the slice
-            try:
-                myslice = self.sliceMaker(y0, x0, width)
-            except RuntimeError as e:
-                print('Fit window moved to edge of ROI')
-                break
-            else:
-                # pull the starting values from it
-                ystart = myslice[0].start
-                xstart = myslice[1].start
-
-                # insert the z-slice number
-                myslice.insert(0, s)
-
-                # set up the fit and perform it using last best params
-                sub_stack = stack[myslice]
-                fit = Gauss2D(sub_stack)
-
-                # move our guess coefs back into the window
-                popt_d['x0'] -= xstart
-                popt_d['y0'] -= ystart
-                # leave this in for now for easier debugging in future.
-                try:
-                    fit.optimize_params(popt_d, **kwargs)
-                except TypeError as e:
-                    print(repr(myslice))
-                    raise e
-
-                # if there was an error performing the fit, try again without
-                # a guess
-                if fit.error:
-                    fit.optimize_params(modeltype=modeltype, **kwargs)
-
-                # if there's not an error update center of fitting window and
-                # move on to the next fit
-                if not fit.error:
-                    popt_d = fit.opt_params_dict()
-                    popt_d['x0'] += xstart
-                    popt_d['y0'] += ystart
-
-                    popt_d['slice'] = s
-                    # calculate the apparent noise as the standard deviation
-                    # of what's the residuals of the fit
-                    popt_d['noise'] = (sub_stack-fit.fit_model).std()
-                    toreturn.append(popt_d.copy())
-
-                    y0 = int(round(popt_d['y0']))
-                    x0 = int(round(popt_d['x0']))
-                else:
-                    # if the fit fails, make sure to _not_ update positions.
-                    bad_fit = fit.opt_params_dict()
-                    bad_fit['slice'] = s
-                    # noise of a failed fit is not really useful
-                    popt_d['noise'] = np.nan
-
-                    toreturn.append(bad_fit.copy())
-
-        return toreturn
-
-    def fitPeaks(self, fitwidth, nproc=1, **kwargs):
+    def fit_peaks(self, fitwidth, nproc=1, **kwargs):
         '''
         Fit all peaks found by peak finder, has the ability to split the peaks
         among multiple processors
@@ -343,14 +236,14 @@ class StackAnalyzer(object):
             nproc = os.cpu_count()
 
         if nproc == 1:
-            fits = [self._fitPeaks_sub(fitwidth, blob, **kwargs)
+            fits = [self._fit_peaks_sub(fitwidth, blob, **kwargs)
                     for blob in blobs]
         elif 1 < nproc:
             # multiprocessing version, order of blobs **NOT** retained.
             # Error here if stack is larger than 1536x1536x126
             print('multiprocessing engaged with {} cores'.format(nproc))
             with mp.Pool(nproc) as p:
-                par_func = self._fitPeaks_sub
+                par_func = self._fit_peaks_sub
                 results = [p.apply_async(
                         par_func, args=(fitwidth, blob), kwds=kwargs
                     ) for blob in blobs]
@@ -363,6 +256,114 @@ class StackAnalyzer(object):
 
         return fits
 
+    def prep_peaks(self, peaks, z_slice, fitwidth):
+        '''
+        Returns a list of GaussFit objects with data and guesses.
+        '''
+        list_of_gfits = []
+        for peak in peaks:
+            # make the slice
+            try:
+                y0 = int(round(peak['y0']))
+                x0 = int(round(peak['x0']))
+                myslice = self.slice_maker(y0, x0, fitwidth)
+            except RuntimeError:
+                print('Fit window moved to edge of ROI')
+                # return array of NaNs, which will let the next step skip.
+                list_of_gfits.append(dict.fromkeys(peak.keys(), np.nan))
+            except ValueError:
+                # means NaN was in peak to begin with, just propagate.
+                list_of_gfits.append(dict.fromkeys(peak.keys(), np.nan))
+            else:
+                # pull the starting values from it
+                ystart = myslice[0].start
+                xstart = myslice[1].start
+
+                # set up the fit and perform it using last best params
+                sub_img = z_slice[myslice]
+                gfit = GaussFit(sub_img, (ystart, xstart), peak)
+                list_of_gfits.append(gfit)
+
+        return list_of_gfits
+
+    def fit_z_slice(self, peaks, z_slice, fitwidth, nproc=1, **kwargs):
+        '''
+        Fit all peaks in a single z_slice (image)
+
+        Parameters
+        ----------
+        peaks : list of dicts
+            keeps peaks labeled, each peak contains the output of the fit
+        z_slice : ndarray (2-dims)
+            the image in which the peaks should be localized.
+        fitwidth : int
+            Sets the size of the fitting window
+        nproc : int
+            number of processors to use
+
+        Returns
+        -------
+        fit_peaks : list of dicts
+            Same format as the input but with newly optimized parameters.
+        '''
+
+        def fit(gfit):
+            '''
+            Takes a gfit object, fits with guess params, then tries without.
+            '''
+            if gfit is None:
+                return None
+
+            gfit.optimize_params(gfit.guess_params, quiet=True, **kwargs)
+            # if there's a fitting error, try again with fresh estimate.
+            if gfit.error:
+                gfit.optimize_params(quiet=True, **kwargs)
+
+            # if there's not an error update center of fitting window and
+            # move on to the next fit
+            popt_d = gfit.opt_params_dict()
+            if not gfit.error:
+                ystart, xstart = gfit.corner_coords
+                popt_d['x0'] += xstart
+                popt_d['y0'] += ystart
+
+                # popt_d['slice'] = s
+                # calculate the apparent noise as the standard deviation
+                # of what's the residuals of the fit
+                popt_d['noise'] = gfit.noise()
+            else:
+                # bad_fit['slice'] = s
+                # noise of a failed fit is not really useful
+                popt_d['noise'] = np.nan
+
+            return popt_d.copy()
+
+        if nproc > os.cpu_count():
+            nproc = os.cpu_count()
+
+        with mp.Pool(nproc) as p:
+            results = p.map(fit, self.prep_peaks(peaks, z_slice, fitwidth))
+
+        return results
+
+
+class GaussFit(Gauss2D):
+    '''
+    A specialized version of Gauss2D which has a few more attributes to keep
+    track of coordinates and initial guesses
+    '''
+
+    def __init__(self, data, corner_coords, guess_params_dict):
+        # pass data to underlying Gauss2D object
+        super().__init__(data)
+        # save the upper left hand corner coordinates
+        # that way we can put the fitted coordinates into context
+        self.corner_coords = corner_coords
+        # set the guess_params internally, must convert from dict first.
+        self.guess_params = self.dict_to_params(guess_params_dict)
+
+    def noise(self):
+        return (data-self.fit_model).std()
 
 class PSFStackAnalyzer(StackAnalyzer):
     """
@@ -379,10 +380,10 @@ class PSFStackAnalyzer(StackAnalyzer):
         # should have a high accuracy mode that filters the data first
         # and finds the slice with the max value before finding peaks.
 
-    def _fitPeaks_sub(self, fitwidth, blob, **kwargs):
+    def _fit_peaks_sub(self, fitwidth, blob, **kwargs):
         y, x, w, amp = blob
 
-        myslice = self.sliceMaker(y, x, fitwidth)
+        myslice = self.slice_maker(y, x, fitwidth)
 
         ystart = myslice[0].start
         xstart = myslice[1].start
@@ -553,7 +554,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         # reset blobs to original
         self.peakfinder.find_blobs()
 
-    def _fitPeaks_sub(self, fitwidth, blob, quiet=True, **kwargs):
+    def _fit_peaks_sub(self, fitwidth, blob, quiet=True, **kwargs):
         '''
         A sub function that can be dispatched to multiple cores for processing
 
@@ -578,7 +579,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         y, x, w, amp = blob
 
         # generate a slice
-        myslice = self.sliceMaker(y, x, fitwidth)
+        myslice = self.slice_maker(y, x, fitwidth)
 
         # save the upper left coordinates for later use
         ystart = myslice[0].start
@@ -645,8 +646,8 @@ class SIMStackAnalyzer(StackAnalyzer):
                 print('blob {} is unfittable'.format(blob))
             return None
 
-    def fitPeaks(self, *args, **kwargs):
-        super().fitPeaks(*args, **kwargs)
+    def fit_peaks(self, *args, **kwargs):
+        super().fit_peaks(*args, **kwargs)
         ni = pd.MultiIndex.from_product(
             [np.arange(self.norients), np.arange(self.nphases)],
             names=['orientation', 'phase']
