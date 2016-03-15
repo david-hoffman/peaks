@@ -143,17 +143,14 @@ class StackAnalyzer(object):
     A parent class for more specialized analysis classes
     """
 
-    def __init__(self, stack):
+    def __init__(self, stack, modeltype='norot'):
         super().__init__()
         # stack is the image stack to be analyzed
         self.stack = stack
-
-    def findpeaks(self):
-        '''
-        A method to find peaks, should have data passed into it, that way child
-        classes can decide how to find peaks initially.
-        '''
-        raise NotImplementedError
+        self.z_slice_fits = None
+        self.fits = None
+        self.peakfinder = None
+        self.modeltype = modeltype
 
     def slice_maker(self, y0, x0, width):
         '''
@@ -230,63 +227,94 @@ class StackAnalyzer(object):
             one peak
         '''
 
-        blobs = self.peakfinder.blobs
+        raise NotImplementedError('To be implemented by child classes')
 
-        if nproc > os.cpu_count():
-            nproc = os.cpu_count()
+    def _estimate_peak_params(self):
+        '''
+        A utility to estimate peak params from internal PeakFinder object
+        '''
+        pf = self.peakfinder
+        blobs = pf.blobs
 
-        if nproc == 1:
-            fits = [self._fit_peaks_sub(fitwidth, blob, **kwargs)
-                    for blob in blobs]
-        elif 1 < nproc:
-            # multiprocessing version, order of blobs **NOT** retained.
-            # Error here if stack is larger than 1536x1536x126
-            print('multiprocessing engaged with {} cores'.format(nproc))
-            with mp.Pool(nproc) as p:
-                par_func = self._fit_peaks_sub
-                results = [p.apply_async(
-                        par_func, args=(fitwidth, blob), kwds=kwargs
-                    ) for blob in blobs]
-                fits = [pp.get() for pp in results]
+        def estimate_from_blob(blob):
+            y, x, w, amp = blob
 
-        # clear nones (i.e. unsuccessful fits)
-        fits = [fit for fit in fits if fit is not None]
+            toreturn = dict(amp=amp,
+                            y0=y,
+                            x0=x,
+                            sigma_x=w,
+                            offset=np.nan)
+            # because of the nan, the first fit will fail automatically and the
+            # next one will automatically estimate the peak params internal to
+            # Gauss2D
+            if self.modeltype.lower != 'sym':
+                toreturn['sigma_y'] = w
+            elif self.modeltype.lower != 'norot':
+                toreturn['rho'] = 0
+            return toreturn
 
-        self.fits = fits
+        peak_estimates = [estimate_from_blob(blob) for blob in blobs]
+        return peak_estimates
 
-        return fits
+    def _slice_to_peak_fits(self):
+        '''
+        Convert fits of slices to fits of peaks.
 
-    def prep_peaks(self, peaks, z_slice, fitwidth):
+        Remember we're assuming that order is preserved.
+        '''
+        self.fits = [pd.DataFrame(peak)
+                     for peak in zip(self.z_slice_fits)
+                     if peak is not None]
+
+    def _prep_peaks(self, peaks, z_slice, fitwidth):
         '''
         Returns a list of GaussFit objects with data and guesses.
         '''
         list_of_gfits = []
         for peak in peaks:
-            # make the slice
-            try:
-                y0 = int(round(peak['y0']))
-                x0 = int(round(peak['x0']))
-                myslice = self.slice_maker(y0, x0, fitwidth)
-            except RuntimeError:
-                print('Fit window moved to edge of ROI')
-                # return array of NaNs, which will let the next step skip.
-                list_of_gfits.append(dict.fromkeys(peak.keys(), np.nan))
-            except ValueError:
-                # means NaN was in peak to begin with, just propagate.
-                list_of_gfits.append(dict.fromkeys(peak.keys(), np.nan))
-            else:
-                # pull the starting values from it
-                ystart = myslice[0].start
-                xstart = myslice[1].start
+            # check if the peak is finite
+            if np.isfinite(peak.amp):
+                try:
+                    y0 = int(round(peak['y0']))
+                    x0 = int(round(peak['x0']))
+                    myslice = self.slice_maker(y0, x0, fitwidth)
+                except RuntimeError:
+                    print('Fit window moved to edge of ROI')
+                    # return array of NaNs, which will let the next step skip.
+                    list_of_gfits.append(dict.fromkeys(peak.keys(), np.nan))
+                except ValueError:
+                    # means NaN was in peak to begin with, just propagate.
+                    list_of_gfits.append(dict.fromkeys(peak.keys(), np.nan))
+                else:
+                    # pull the starting values from it
+                    ystart = myslice[0].start
+                    xstart = myslice[1].start
 
-                # set up the fit and perform it using last best params
-                sub_img = z_slice[myslice]
-                gfit = GaussFit(sub_img, (ystart, xstart), peak)
-                list_of_gfits.append(gfit)
+                    # set up the fit and perform it using last best params
+                    sub_img = z_slice[myslice]
+                    gfit = GaussFit(sub_img, (ystart, xstart), peak)
+                    list_of_gfits.append(gfit)
+            else:
+                # if peak isn't finite, just prop
+                list_of_gfits.append(dict.fromkeys(peak.keys(), np.nan))
 
         return list_of_gfits
 
-    def fit_z_slice(self, peaks, z_slice, fitwidth, nproc=1, **kwargs):
+    @staticmethod
+    def _clear_bad_fits(fits):
+        # determine the good fits, by checking that returned paramters
+        # are finite
+        def fit_good(fit):
+            '''
+            Check whether a fit is good by looking at all values
+            and ensuring that they're finite
+            '''
+            return np.isfinite(np.array(fit.values())).all()
+
+        # use the filtering function of arrays to clear out the bad fits
+        return [fit for fit in fits if fit_good(fit)]
+
+    def _fit_z_slice(self, peaks, z_slice, fitwidth, nproc=1, **kwargs):
         '''
         Fit all peaks in a single z_slice (image)
 
@@ -311,38 +339,35 @@ class StackAnalyzer(object):
             '''
             Takes a gfit object, fits with guess params, then tries without.
             '''
-            if gfit is None:
-                return None
+            if isinstance(gfit, dict):
+                # then we know that this is a dict of NaNs
+                return gfit.copy()
 
-            gfit.optimize_params(gfit.guess_params, quiet=True, **kwargs)
+            gfit.optimize_params(gfit.guess_params, quiet=True,
+                                 modeltype=self.modeltype, **kwargs)
             # if there's a fitting error, try again with fresh estimate.
             if gfit.error:
-                gfit.optimize_params(quiet=True, **kwargs)
+                gfit.optimize_params(quiet=True, modeltype=self.modeltype,
+                                     **kwargs)
 
             # if there's not an error update center of fitting window and
             # move on to the next fit
             popt_d = gfit.opt_params_dict()
+            popt_d['noise'] = gfit.noise
             if not gfit.error:
                 ystart, xstart = gfit.corner_coords
                 popt_d['x0'] += xstart
                 popt_d['y0'] += ystart
 
                 # popt_d['slice'] = s
-                # calculate the apparent noise as the standard deviation
-                # of what's the residuals of the fit
-                popt_d['noise'] = gfit.noise()
-            else:
-                # bad_fit['slice'] = s
-                # noise of a failed fit is not really useful
-                popt_d['noise'] = np.nan
-
+            # if there is an error all these values will be nan.
             return popt_d.copy()
 
         if nproc > os.cpu_count():
             nproc = os.cpu_count()
 
-        with mp.Pool(nproc) as p:
-            results = p.map(fit, self.prep_peaks(peaks, z_slice, fitwidth))
+        with mp.Pool(nproc) as pool:
+            results = pool.map(fit, self._prep_peaks(peaks, z_slice, fitwidth))
 
         return results
 
@@ -362,89 +387,80 @@ class GaussFit(Gauss2D):
         # set the guess_params internally, must convert from dict first.
         self.guess_params = self.dict_to_params(guess_params_dict)
 
-    def noise(self):
-        return (data-self.fit_model).std()
 
 class PSFStackAnalyzer(StackAnalyzer):
     """
     A specialized version of StackAnalyzer for PSF stacks.
     """
 
-    def __init__(self, stack, psfwidth=1.68, **kwargs):
-        super().__init__(stack)
+    def __init__(self, stack, psfwidth=1.68, modeltype='norot', **kwargs):
+        super().__init__(stack, modeltype)
         self.psfwidth = psfwidth
         # median filter to remove spikes
         self.peakfinder = PeakFinder(median_filter(self.stack.max(0), 3),
-                                     self.psfwidth, **kwargs)
+                                     self.psfwidth, modeltype)
         self.peakfinder.find_blobs()
         # should have a high accuracy mode that filters the data first
         # and finds the slice with the max value before finding peaks.
 
-    def _fit_peaks_sub(self, fitwidth, blob, **kwargs):
-        y, x, w, amp = blob
+    def fit_peaks(self, fitwidth, nproc=1, **kwargs):
+        '''
+        Fit the peaks
 
-        myslice = self.slice_maker(y, x, fitwidth)
-
-        ystart = myslice[0].start
-        xstart = myslice[1].start
-
-        # insert the equivalent of `:` at the beginning
-        myslice.insert(0, slice(None, None, None))
-
-        substack = self.stack[myslice]
-
+        Parameters
+        ----------
+        '''
         # we could do median filtering on the substack before attempting to
         # find the max slice!
 
-        # this could still get messed up by salt and pepper noise.
-        # my_max = np.unravel_index(substack.argmax(), substack.shape)
-        # use the sum of each z-slice
-        my_max = substack.sum((1, 2)).argmax()
+        # use the sum of z-slices to find max slice
+        my_max = self.stack.sum((1, 2)).argmax()
 
-        # now change my slice to be that zslice
-        myslice[0] = my_max
-        substack = self.stack[myslice]
+        # extract max slice
+        max_slice = self.stack[my_max]
 
-        # prep our container
-        peakfits = []
-
+        # estimate parameters
+        max_peak_estimates = self._estimate_peak_params()
         # initial fit
-        max_z = Gauss2D(substack)
-        max_z.optimize_params(**kwargs)
+        max_fits = self._fit_z_slice(max_peak_estimates, max_slice,
+                                     fitwidth, nproc)
 
-        if np.isfinite(max_z.opt_params).all():
+        # clear failures, no point in fitting those
+        max_fits = self._clear_bad_fits(max_fits)
 
-            # recenter the coordinates and add a slice variable
-            opt_params = max_z.opt_params_dict()
-            opt_params['slice'] = my_max
-            opt_params['x0'] += xstart
-            opt_params['y0'] += ystart
-
-            # append to our list
-            peakfits.append(opt_params.copy())
-
-            # pop the slice parameters
-            opt_params.pop('slice')
-
+        # if there aren't any good fits, exit
+        if max_fits:
             forwardrange = range(my_max+1, self.stack.shape[0])
+            # backwards is reversed because we want to fit from the max
             backwardrange = reversed(range(0, my_max))
+            # fit forward
+            intermediate_peaks = max_fits
+            forward_fits = []
+            for f_slice in forwardrange:
+                intermediate_peaks = self._fit_z_slice(intermediate_peaks,
+                                                       self.stack[f_slice],
+                                                       fitwidth, nproc,
+                                                       **kwargs)
+                forward_fits.append(intermediate_peaks)
+            # do backwards now
+            # start again with the max_fits
+            intermediate_peaks = max_fits
+            backwards_fits = []
+            for b_slice in backwardrange:
+                intermediate_peaks = self._fit_z_slice(intermediate_peaks,
+                                                       self.stack[b_slice],
+                                                       fitwidth, nproc,
+                                                       **kwargs)
+                backwards_fits.append(intermediate_peaks)
 
-            peakfits += self.fitPeak(
-                forwardrange, fitwidth, opt_params.copy(), quiet=True)
+            total_fits = (list(reversed(backwards_fits)) +
+                          [max_fits] + forward_fits)
 
-            peakfits += self.fitPeak(
-                backwardrange, fitwidth, opt_params.copy(), quiet=True)
-
-            # turn everything into a data frame for easy manipulation.
-            peakfits_df = pd.DataFrame(peakfits)
-            # convert sigmas to positive values
-            peakfits_df[['sigma_x', 'sigma_y']] =\
-                abs(peakfits_df[['sigma_x', 'sigma_y']])
-
-            return peakfits_df.set_index('slice').sort_index()
+            # convert to list of DataFrames for each peak and save
+            # in fits attribute
+            self.fits = [pd.DataFrame(peak) for peak in zip(*total_fits)]
         else:
-            print('blob {} is unfittable'.format(blob))
-            return None
+            print('No fittable blobs')
 
     def calc_psf_params(self, subrange=slice(None, None, None), **kwargs):
         fits = self.fits
