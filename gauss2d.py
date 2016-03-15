@@ -506,67 +506,73 @@ class Gauss2D(object):
         # we can use the full output to determine wether the fit was successful
         # or not. This will also allow for easier integration once MLE fitting
         # is implemented
-        with warnings.catch_warnings():
-            # we'll catch this error later and alert the user with a printout
-            warnings.simplefilter("ignore", OptimizeWarning)
+        if np.isfinite(guess_params).all():
+            with warnings.catch_warnings():
+                # we'll catch this error later and alert the user with a printout
+                warnings.simplefilter("ignore", OptimizeWarning)
 
-            if fit_type.lower() == 'mle':
-                # monkey patch in mle functions
-                mp._general_function = _general_function_mle
-                mp._weighted_general_function = _weighted_general_function_mle
-                # upper_bound = np.ones_like(guess_params)*np.inf
-                # lower_bound = np.ones_like(guess_params)*(-np.inf)
-                # lower_bound[0] = 0
-                # lower_bound[-1] = 0
-                # bounds = (lower_bound, upper_bound)
-            else:
-                # use standard ls
-                mp._general_function = _general_function_ls
-                mp._weighted_general_function = _weighted_general_function_ls
-                # bounds = (-np.inf, np.inf)
+                if fit_type.lower() == 'mle':
+                    # monkey patch in mle functions
+                    mp._general_function = _general_function_mle
+                    mp._weighted_general_function = _weighted_general_function_mle
+                    # upper_bound = np.ones_like(guess_params)*np.inf
+                    # lower_bound = np.ones_like(guess_params)*(-np.inf)
+                    # lower_bound[0] = 0
+                    # lower_bound[-1] = 0
+                    # bounds = (lower_bound, upper_bound)
+                else:
+                    # use standard ls
+                    mp._general_function = _general_function_ls
+                    mp._weighted_general_function = _weighted_general_function_ls
+                    # bounds = (-np.inf, np.inf)
 
-            try:
-                # need to add bounds here when scipy 0.17 is released
-                popt, pcov, infodict, errmsg, ier = mp.curve_fit(
-                    model_ravel, (xx, yy), data.ravel(), p0=guess_params,
-                    full_output=True, Dfun=self.model_jac, col_deriv=True)
-            except RuntimeError as e:
-                # print(e)
-                # now we need to re-parse the error message to set all the
-                # flags pull the message
-                self.errmsg = e.args[0].replace(
-                    'Optimal parameters not found: ', ''
-                    )
+                try:
+                    # need to add bounds here when scipy 0.17 is released
+                    popt, pcov, infodict, errmsg, ier = mp.curve_fit(
+                        model_ravel, (xx, yy), data.ravel(), p0=guess_params,
+                        full_output=True, Dfun=self.model_jac, col_deriv=True)
+                except RuntimeError as e:
+                    # print(e)
+                    # now we need to re-parse the error message to set all the
+                    # flags pull the message
+                    self.errmsg = e.args[0].replace(
+                        'Optimal parameters not found: ', ''
+                        )
 
-                # run through possibilities for failure
-                errors = {0: "Improper",
-                          5: "maxfev",
-                          6: "ftol",
-                          7: "xtol",
-                          8: "gtol",
-                          'unknown': "Unknown"}
+                    # run through possibilities for failure
+                    errors = {0: "Improper",
+                              5: "maxfev",
+                              6: "ftol",
+                              7: "xtol",
+                              8: "gtol",
+                              'unknown': "Unknown"}
 
-                # set the error flag correctly
-                for k, v in errors.items():
-                    if v in self.errmsg:
-                        self.ier = k
+                    # set the error flag correctly
+                    for k, v in errors.items():
+                        if v in self.errmsg:
+                            self.ier = k
 
-            else:
-                # if we save the infodict as well then we'll start using a lot
-                # of memory
-                # self.infodict = infodict
-                self.errmsg = errmsg
-                self.ier = ier
+                else:
+                    # if we save the infodict as well then we'll start using a lot
+                    # of memory
+                    # self.infodict = infodict
+                    self.errmsg = errmsg
+                    self.ier = ier
 
-                if check_params:
-                    self._check_params(popt)
+                    if check_params:
+                        self._check_params(popt)
 
-                # check to see if the covariance is bunk
-                if not np.isfinite(pcov).all():
-                    self.errmsg = '''
-                    Covariance of the parameters could not be estimated
-                    '''
-                    self.ier = 9
+                    # check to see if the covariance is bunk
+                    if not np.isfinite(pcov).all():
+                        self.errmsg = '''
+                        Covariance of the parameters could not be estimated
+                        '''
+                        self.ier = 9
+        else:
+            # The guess_params were not finite, no point in proceeding
+            # with fit. Exit here.
+            self.ier = 10
+            self.errmsg = 'Guess params are not finite'
 
         # save parameters for later use
         # if the error flag is good, proceed
