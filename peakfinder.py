@@ -67,7 +67,7 @@ class PeakFinder(object):
 
         self._data = data
         # make an initial guess of the threshold
-        self._thresh = np.median(data)
+        self._thresh = np.std(data)
         self._blobs = None
         self._modeltype = modeltype
         # estimated width of the blobs
@@ -489,9 +489,6 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6,
         The absolute lower bound for scale space maxima. Local maxima smaller
         than thresh are ignored. Reduce this to detect blobs with less
         intensities.
-    overlap : float, optional
-        A value between 0 and 1. If the area of two blobs overlaps by a
-        fraction greater than `threshold`, the smaller blob is eliminated.
     Returns
     -------
     A : (n, 3) ndarray
@@ -537,9 +534,9 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6,
     assert_nD(image, 2)
 
     image = img_as_float(image)
-
+    sigma_ratio = float(sigma_ratio)
     # k such that min_sigma*(sigma_ratio**k) > max_sigma
-    k = int(math.log(float(max_sigma) / min_sigma, sigma_ratio)) + 1
+    k = int(log(float(max_sigma) / min_sigma, sigma_ratio)) + 1
 
     # a geometric progression of standard deviations for gaussian kernels
     sigma_list = np.array([min_sigma * (sigma_ratio ** i)
@@ -554,8 +551,8 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6,
     dog_images = [(gaussian_images[i] - gaussian_images[i + 1]) * sigma_list[i]
                   for i in range(k)]
     image_cube = np.dstack(dog_images)
-
-    # local_maxima = get_local_maxima(image_cube, threshold)
+    # peak_local_max is looking in the image_cube, so threshold should
+    # be scaled by differences in sigma, i.e. sigma_ratio
     local_maxima = peak_local_max(image_cube, threshold_abs=threshold,
                                   footprint=np.ones((3, 3, 3)),
                                   threshold_rel=0.0,
