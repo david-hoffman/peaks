@@ -736,27 +736,48 @@ class SpectralPeakFinder(object):
         self.FoM = FoM
         self.g_mean_data = g_mean_data
 
-    def find_peaks(self, width, cutoff=7, cutoff_high=np.inf, show=False):
+    def find_peaks(self, width, cutoff=7, cutoff_high=np.inf, presmooth=0,
+                   show=False):
         '''
         A function that finds peaks in the FoM trace.
         '''
 
-        FoM = self.FoM
-
         # find the local maxima in the SNR trace
         # presmooth might make sense here
+        if presmooth:
+            FoM = gaussian_filter(self.FoM, presmooth)
+            width2 = int(2*presmooth*np.sqrt(2*np.log(2)))
+        elif presmooth is None:
+            FoM = gaussian_filter(self.FoM, width*(np.sqrt(2*np.log(2))))
+            width2 = int(2*width*(2*np.log(2)))
+        else:
+            FoM = self.FoM
+            width2 = width
         peaks = argrelmax(FoM*(FoM > cutoff), order=width)[0]
-
-        peaks = peaks[FoM[peaks] < cutoff_high]
+        # here we look to see the *relative* intensity of the peak.
+        # set up our container
+        good_peaks = []
+        for p in peaks:
+            # find the lower side
+            pm = max(p - width2, 0)
+            # find the upper side
+            pp = min(p + width2, len(FoM)-1)
+            # test if peak minus sides is within cutoff
+            # Below tests a *relative* cutoff
+            # should test an absolute cutoff as well
+            if FoM[p] - min(FoM[pm], FoM[pp]) > cutoff:
+                # if not, add peak
+                good_peaks.append(p)
+        # peaks = peaks[FoM[peaks] < cutoff_high]
 
         # Show the peaks?
         if show:
             fig, ax = plt.subplots(1, 1)
             ax.plot(FoM)
-            ax.plot(peaks, FoM[peaks], 'ro')
+            ax.plot(good_peaks, FoM[good_peaks], 'ro')
             ax.axis('tight')
 
-        self.peaks = peaks
+        self.peaks = good_peaks
 
     def refine_peaks(self, window_width=8):
         '''
@@ -824,15 +845,15 @@ class SpectralPeakFinder(object):
             if ratio < 0.05:
                 ratio = 0.05
 
-            fig, ax = plt.subplots(2, 1, squeeze=True, sharex=True,
-                                   figsize=(12, 12*ratio*2))
+            fig, (ax0, ax1) = plt.subplots(2, 1, squeeze=True, sharex=True,
+                                           figsize=(12, 12*ratio*2))
 
-            ax[0].matshow(g_mean_data[:, peak, :])
-            ax[0].axis('tight')
-            ax[0].set_xticks([])
+            ax0.matshow(g_mean_data[:, peak, :])
+            ax0.axis('tight')
+            ax0.set_xticks([])
 
-            ax[1].plot(g_mean_data[:, peak, :].max(0))
-            ax[1].axis('tight')
+            ax1.plot(g_mean_data[:, peak, :].max(0))
+            ax1.axis('tight')
 
             fig.suptitle('{}, Max SNR {:.3f}'.format(peak, FoM[peak]), y=1,
                          fontsize=14)
@@ -864,10 +885,14 @@ class SpectralPeakFinder1d(SpectralPeakFinder):
 
         self._plot_peaks_lines()
 
-        for peak in peaks:
-            fig, ax = plt.subplots(1, 1, squeeze=True, sharex=True)
+        data_dict = {'{}, Max SNR {:.3f}'.format(peak, FoM[peak]):
+                     g_mean_data[0, peak, :]
+                     for peak in peaks}
+        return display_grid(data_dict)
 
-            ax.plot(g_mean_data[0, peak, :])
-            ax.axis('tight')
-            ax.set_title('{}, Max SNR {:.3f}'.format(peak, FoM[peak]), y=1,
-                         fontsize=14)
+    def fix_cosmic_rays(self, *args, **kwargs):
+        '''
+        This method is invalid for this type of data
+        '''
+
+        raise ValueError('This method is not valid for 1d data.')
