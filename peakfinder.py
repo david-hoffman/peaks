@@ -593,6 +593,7 @@ class SpectralPeakFinder(object):
         # accomodate the original data (uint16) but also allows negative
         # numbers.
         self.data = data.astype(int)
+        self.peaks = None
 
     def remove_background(self):
         '''
@@ -657,6 +658,20 @@ class SpectralPeakFinder(object):
 
         # return the number of points removed
         return np.count_nonzero(picked_points)
+
+    def fix_cosmic_rays(self, width, z_score_cutoff=2.5):
+        '''
+        Method to remove cosmic rays from good peaks.
+
+        Assumes that cosmic rays only show up for one frame and are *bright*
+        '''
+        # calculate the average around the peaks
+        mean_data_sum = uniform_filter1d(self.data, width, axis=1).sum(2)
+        z_score = (mean_data_sum.max(0) -
+                   mean_data_sum.mean(0))/mean_data_sum.std(0)
+        bad_peaks = np.arange(len(z_score))[z_score > z_score_cutoff]
+
+        self.peaks = [p for p in self.peaks if p not in bad_peaks]
 
     def calc_FoM(self, width, s_lambda=3, s_time=3, use_max=False):
         '''
