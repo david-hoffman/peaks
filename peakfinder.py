@@ -6,35 +6,31 @@ A Class to find peaks and fit them
 
 # Get our numerical stuff
 import numpy as np
-
+# need pandas for better data containers
+import pandas as pd
+# we need a few extra features from matplot lib
+import matplotlib.pyplot as plt
+# we need ittertools for the pruner function defined below
+import itertools as itt
+# We want to be able to warn the user about potential problems
+import warnings
+# need log function
+from math import log
 # the difference of Gaussians algorithm
 from skimage.draw import circle
 from skimage.util import img_as_float
 from skimage.feature.peak import peak_local_max
 from skimage._shared.utils import assert_nD
-
-# we need ittertools for the pruner function defined below
-import itertools as itt
-
-# we need a few extra features from matplot lib
-import matplotlib.pyplot as plt
-
-# We want to be able to warn the user about potential problems
-import warnings
-
+# ndimage imports
 from scipy.ndimage import gaussian_filter, median_filter, uniform_filter1d
 from scipy.ndimage.measurements import label, find_objects
-
 # import our 2D gaussian fitting class
 from .gauss2d import Gauss2D
-
-# need pandas for better data containers
-import pandas as pd
-
+# plotting
+from dphplotting import display_grid
+# specialty numpy and scipy imports
 from numpy.linalg import norm
 from scipy.signal import argrelmax
-
-import math
 
 
 class PeakFinder(object):
