@@ -183,32 +183,13 @@ class PeakFinder(object):
         blobs : ndarray
             blob parameters ordered as `y`, `x`, `sigma`, `amp`
         '''
-
-        # scale the data to the interval of [0, 1], the DOG algorithm works
-        # best for this
-
+        # cast to float
         data = self.data.astype(float)
-
-        dmin = data.min()
-        dmax = data.max()
-
-        scaled_data = (data-dmin)/(dmax-dmin)
-
-        # Threshold is a special variable because it needs to be scaled as well
-        # See if the user has tried to pass it
-        try:
-            thresh = kwargs.pop('threshold')
-        except KeyError:
-            # if that fails then set the threshold to the object's
-            thresh = self.thresh
-        # now scale the threshold the same as we did for the data
-        scaled_thresh = (float(thresh)-dmin)/(dmax-dmin)
         # take care of the default kwargs with 'good' values
         default_kwargs = {
                             'min_sigma': self.blob_sigma/1.6,
                             'max_sigma': self.blob_sigma*1.6,
-                            # 'overlap': 0.0,
-                            'threshold': scaled_thresh
+                            'threshold': self.thresh
                         }
 
         # update default_kwargs with user passed kwargs
@@ -216,13 +197,13 @@ class PeakFinder(object):
 
         # double check sigmas
         if default_kwargs['min_sigma'] >= default_kwargs['max_sigma']:
-            default_kwargs['max_sigma'] = default_kwargs['min_sigma']*1.6**2
+            default_kwargs['max_sigma'] = default_kwargs['min_sigma']
 
         # Perform the DOG
         if method.lower() == 'dog':
             # NOTE: the threshold for `blob_dog` is the threshold in scale
             # space i.e. the threshold is not intuitively clear.
-            blobs = better_blob_dog(scaled_data, **default_kwargs)
+            blobs = better_blob_dog(data, **default_kwargs)
         else:
             blobs = None
 
