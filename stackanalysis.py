@@ -1,18 +1,17 @@
 '''
 A set of classes for analyzing data stacks that contain punctate data
 '''
+import os
 import numpy as np
 import pandas as pd
 import multiprocessing as mp
-import os
+from scipy.optimize import curve_fit
 from scipy import ndimage as ndi
 from scipy.ndimage.filters import median_filter
-from scipy.optimize import curve_fit
 from matplotlib import pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from scipy.interpolate import griddata
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
+from .utils import gauss_fit, sine, scatterplot
 from scipy.fftpack import fft
 
 # TODO
@@ -24,118 +23,6 @@ from scipy.fftpack import fft
 # to figure out how to send each stackanalyzer to each core.
 
 # Isaac suggests trying to use Mr. Job
-
-
-def gauss_fit(xdata, ydata, withoffset=True, trim=None, guess_z=None):
-
-    def nmoment(x, counts, c, n):
-        '''
-        A helper function to calculate moments of histograms
-        '''
-        return np.sum((x-c)**n*counts) / np.sum(counts)
-
-    def gauss_no_offset(x, amp, x0, sigma_x):
-        '''
-        Helper function to fit 1D Gaussians
-        '''
-
-        return amp*np.exp(-(x-x0)**2/(2*sigma_x**2))
-
-    def gauss(x, amp, x0, sigma_x, offset):
-        '''
-        Helper function to fit 1D Gaussians
-        '''
-
-        return amp*np.exp(-(x-x0)**2/(2*sigma_x**2))+offset
-
-    offset = ydata.min()
-    ydata_corr = ydata-offset
-
-    if guess_z is None:
-        x0 = nmoment(xdata, ydata_corr, 0, 1)
-    else:
-        x0 = guess_z
-
-    sigma_x = np.sqrt(nmoment(xdata, ydata_corr, x0, 2))
-
-    p0 = np.array([ydata_corr.max(), x0, sigma_x, offset])
-
-    if trim is not None:
-        args = abs(xdata-x0) < trim*sigma_x
-        xdata = xdata[args]
-        ydata = ydata[args]
-
-    try:
-        if withoffset:
-            popt, pcov = curve_fit(gauss, xdata, ydata, p0=p0)
-        else:
-            popt, pcov = curve_fit(gauss_no_offset, xdata, ydata, p0=p0[:3])
-            popt = np.insert(popt, 3, offset)
-    except RuntimeError:
-        popt = p0*np.nan
-
-    return popt
-
-def sine(x, amp, f, p, o):
-    '''
-    Utility function to fit nonlinearly
-    '''
-    return amp*np.sin(2*np.pi*f*x+p)+o
-
-
-def grid(x, y, z, resX=1000, resY=1000, method='cubic'):
-    "Convert 3 column data to matplotlib grid"
-    if not np.isfinite(x+y+z).all():
-        raise ValueError('x y or z is not finite')
-
-    xi = np.linspace(x.min(), x.max(), resX)
-    yi = np.linspace(y.min(), y.max(), resY)
-    X, Y = np.meshgrid(xi, yi)
-    Z = griddata((x, y), z, (X, Y), method=method)
-    return X, Y, Z
-
-
-def scatterplot(z, y, x, ax=None, fig=None, cmap='gnuplot2', **kwargs):
-    '''
-    A way to make a nice scatterplot with contours.
-    '''
-
-    if fig is None or ax is None:
-        fig, ax = plt.subplots(1, 1, squeeze=True, figsize=(6, 6))
-
-    # split out the key words for the grid method
-    # so that the rest can be passed onto the first contourf call.
-    grid_kwargs = {}
-    for k in ('resX', 'resY', 'method'):
-        try:
-            grid_kwargs[k] = kwargs.pop(k)
-        except KeyError:
-            pass
-
-    X, Y, Z = grid(x, y, z, **grid_kwargs)
-
-    mymax = np.nanmax(z)
-    mymin = np.nanmin(z)
-
-    # conts=np.linspace(mymin, mymax, 20, endpoint=True)
-    conts1 = np.linspace(mymin, mymax, 30)
-    conts2 = np.linspace(mymin, mymax, 10)
-    s = ax.contourf(X, Y, Z, conts1, origin='upper',
-                    cmap=cmap, zorder=0, **kwargs)
-    ax.contour(X, Y, Z, conts2, colors='k', origin='upper', zorder=1)
-
-    # if there's more than 100 beads to fit then don't make spots
-    if len(x) > 100:
-        mark = '.'
-    else:
-        mark = 'o'
-
-    ax.scatter(x, y, c='c', zorder=2, marker=mark)
-    ax.invert_yaxis()
-    the_divider = make_axes_locatable(ax)
-    color_axis = the_divider.append_axes("right", size="5%", pad=0.1)
-    plt.colorbar(s, cax=color_axis)
-    return fig, ax
 
 
 class StackAnalyzer(object):
@@ -508,8 +395,11 @@ class SIMStackAnalyzer(StackAnalyzer):
                  periods=1, **kwargs):
         # make sure the stack has the right shape
         my_shape = stack.shape
-        assert len(my_shape) == 3, "Stack has wrong number of dimensions"
-        assert stack.shape[0] == norients*nphases, "Number of images does not equal orients*phases"
+        assert len(my_shape) == 3, ("Stack has wrong number of dimensions,",
+                                    " dim = {}").format(my_shape)
+        assert stack.shape[0] == norients * nphases, ("Number of images does",
+                                                      " not equal",
+                                                      " orients * phases")
 
         super().__init__(stack)
 
@@ -613,7 +503,7 @@ class SIMStackAnalyzer(StackAnalyzer):
 
                 # do the fit, using the guess_parameters
                 fit.optimize_params(guess_params=guess_params,
-                                       quiet=quiet, **kwargs)
+                                    quiet=quiet, **kwargs)
 
                 # get the optimized parameters as a dict
                 opt = fit.opt_params_dict()
