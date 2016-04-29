@@ -106,7 +106,7 @@ class PeakFinder(object):
     modeltype = property(**modeltype())
 
     @property
-    def peak_coefs(self):
+    def fits(self):
         '''
         Optimized parameters from the fit
         '''
