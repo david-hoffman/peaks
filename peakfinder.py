@@ -31,6 +31,7 @@ from dphplotting import display_grid
 # specialty numpy and scipy imports
 from numpy.linalg import norm
 from scipy.signal import argrelmax
+from dphutils import fft_gaussian_filter
 
 
 class PeakFinder(object):
@@ -542,9 +543,8 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6,
     sigma_list = np.array([min_sigma * (sigma_ratio ** i)
                            for i in range(k + 1)])
 
-    # NOTE a faster gaussian_filter would significantly speed this operation
-    # up.
-    gaussian_images = [gaussian_filter(image, s) for s in sigma_list]
+    # Use the faster fft_gaussian_filter to speed things up.
+    gaussian_images = [fft_gaussian_filter(image, s) for s in sigma_list]
 
     # computing difference between two successive Gaussian blurred images
     # multiplying with standard deviation provides scale invariance
