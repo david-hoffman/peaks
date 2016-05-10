@@ -132,6 +132,9 @@ def grid(x, y, z, resX=1000, resY=1000, method='cubic'):
     xi = np.linspace(x.min(), x.max(), resX)
     yi = np.linspace(y.min(), y.max(), resY)
     X, Y = np.meshgrid(xi, yi)
+    # from scipy.interpolate import Rbf
+    # myrbf = Rbf(x, y, z, function="linear")
+    # Z = myrbf(X, Y)
     Z = griddata((x, y), z, (X, Y), method=method)
     return X, Y, Z
 

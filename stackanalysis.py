@@ -657,7 +657,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         sim_params = []
 
         for fit in fits:
-            for i, trace in fit.dropna().groupby(level='orientation'):
+            for i, trace in fit.groupby(level='orientation'):
 
                 # pull amplitude values
                 if modtype == 'nl':
@@ -682,7 +682,7 @@ class SIMStackAnalyzer(StackAnalyzer):
     def plot_sim_params(self, orientations=None, **kwargs):
         sim_params = self.sim_params
         norients = self.norients
-        fig, ax = plt.subplots(1, norients, figsize=(4*norients, 4))
+        fig, ax = plt.subplots(1, norients, figsize=(4 * norients, 4))
 
         for i, orient in sim_params.groupby('orientation'):
             orient = orient.dropna()
@@ -702,6 +702,47 @@ class SIMStackAnalyzer(StackAnalyzer):
         fig.tight_layout()
 
         return fig, ax
+
+    def plot_sim_hist(self, orientations=None, **kwargs):
+        '''
+        Utility to plot a histogram of the SIM parameters
+        '''
+        # pull sim_params
+        sim_params = self.sim_params
+        # check if they have any length
+        if len(sim_params):
+            try:
+                axs = sim_params.hist(bins=int(np.sqrt(len(sim_params))),
+                                      column='modulation', by='orientation',
+                                      figsize=(20, 4), layout=(1, 5),
+                                      histtype='stepfilled')
+            except ValueError as e:
+                raise(e)
+            else:
+                # figure out the figure, pandas doesn't return it automatically.
+                fig = axs.ravel()[0].get_figure()
+                # iterate through axes
+                for i, ax in enumerate(axs.ravel()):
+                    # if orientations are passed use them
+                    if orientations is not None:
+                        name = orientations[i]
+                    else:
+                        name = i
+                    # we only expect values between 0 and 1
+                    ax.set_xlim([0, 1])
+                    # from the title get the location in DataFrame of desired data.
+                    loc = int(ax.title.get_text())
+                    # calc mean
+                    mymean = sim_params.groupby('orientation').modulation.mean().loc[loc]
+                    # calc median
+                    mymedian = sim_params.groupby('orientation').modulation.median().loc[loc]
+                    # add lines
+                    ax.axvline(mymean, color='r')
+                    ax.axvline(mymedian, color='g')
+                    # replace title
+                    ax.set_title('{}, mean = {:.3f}, median = {:.3f}'.format(name, mymean, mymedian))
+                fig.tight_layout()
+                return fig, axs
 
     def calc_modmap(self):
         nphases = self.nphases
