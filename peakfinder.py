@@ -31,7 +31,7 @@ from dphplotting import display_grid
 # specialty numpy and scipy imports
 from numpy.linalg import norm
 from scipy.signal import argrelmax
-from dphutils import fft_gaussian_filter
+from dphutils import fft_gaussian_filter, slice_maker
 
 
 class PeakFinder(object):
@@ -52,11 +52,9 @@ class PeakFinder(object):
             should be removed prior to construction
         sigma : float, optional, default: 1.0
             the estimated width of the peaks
-        modeltype : ['sym' | 'norot' | 'full'], optional, default: 'sym'
-            The peak model, see the documentation for `Gauss2D` for more info
     '''
 
-    def __init__(self, data, sigma=1.0, modeltype='sym'):
+    def __init__(self, data, sigma=1.0):
         # some error checking
         if not isinstance(data, np.ndarray):
             raise TypeError('data is not a numpy array')
@@ -64,13 +62,12 @@ class PeakFinder(object):
         if data.ndim != 2:
             raise ValueError(
                 'The parameter `data` must be a 2-dimensional array'
-                )
+            )
 
         self._data = data
         # make an initial guess of the threshold
         self._thresh = np.std(data)
         self._blobs = None
-        self._modeltype = modeltype
         # estimated width of the blobs
         self._blob_sigma = sigma
 
@@ -91,20 +88,6 @@ class PeakFinder(object):
         # This attribute should be read-only, which means that it should return
         # a copy of the data not a pointer.
         return self._data
-
-    def modeltype():
-        doc = "The modeltype property."
-
-        def fget(self):
-            return self._modeltype
-
-        def fset(self, value):
-            self._modeltype = value
-
-        def fdel(self):
-            del self._modeltype
-        return locals()
-    modeltype = property(**modeltype())
 
     @property
     def fits(self):
@@ -188,10 +171,10 @@ class PeakFinder(object):
         data = self.data.astype(float)
         # take care of the default kwargs with 'good' values
         default_kwargs = {
-                            'min_sigma': self.blob_sigma/1.6,
-                            'max_sigma': self.blob_sigma*1.6,
-                            'threshold': self.thresh
-                        }
+            'min_sigma': self.blob_sigma / 1.6,
+            'max_sigma': self.blob_sigma * 1.6,
+            'threshold': self.thresh
+        }
 
         # update default_kwargs with user passed kwargs
         default_kwargs.update(kwargs)
@@ -245,7 +228,7 @@ class PeakFinder(object):
         # Need to make this an ellipse using both sigmas and angle
         for blob in blobs:
             if diameter is None:
-                radius = blob[2]*4
+                radius = blob[2] * 4
             else:
                 radius = diameter
             rr, cc = circle(blob[0], blob[1], radius, self._data.shape)
@@ -295,10 +278,10 @@ class PeakFinder(object):
         nrows = int(np.ceil(np.sqrt(nb_labels)))
         ncols = int(np.ceil(nb_labels / nrows))
 
-        fig, axes = plt.subplots(nrows, ncols, figsize=(3*ncols, 3*nrows))
+        fig, axes = plt.subplots(nrows, ncols, figsize=(3 * ncols, 3 * nrows))
 
         for n, (obj, ax) in enumerate(zip(my_objects, axes.ravel())):
-            ex = (obj[1].start, obj[1].stop-1, obj[0].stop-1, obj[0].start)
+            ex = (obj[1].start, obj[1].stop - 1, obj[0].stop - 1, obj[0].start)
             ax.matshow(data[obj], extent=ex, **kwargs)
             if withfits:
                 # generate the model fit to display, from parameters.
@@ -334,46 +317,35 @@ class PeakFinder(object):
 
         return self.blobs
 
-    def fit_blobs(self, diameter=None, quiet=True):
-        labels = self._labels
-        data = self.data
-
-        if labels is None:
-            self.label_blobs(diameter=diameter)
-            labels = self._labels
-            if labels is None:
-                warnings.warn('Labels were not available', UserWarning)
-                return None
-
-        my_objects = find_objects(labels)
-        # peakfits = pd.DataFrame(index=np.arange(len(my_objects)),
-        # columns=['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'rho', 'offset', 'SNR'], dtype=float)
+    def fit_blobs(self, width=10, **kwargs):
+        """Fit blobs to Gaussian funtion."""
+        # If we don't have blobs, find them.
+        if self._blobs is None:
+            self.find_blobs()
+        # set up the container for our fits
         peakfits = []
-        for i, obj in enumerate(my_objects):
-            mypeak = Gauss2D(data[obj])
-            mypeak.optimize_params(modeltype=self.modeltype, quiet=quiet)
+        # iterate through blobs
+        for y, x, s, r in self.blobs:
+            # make a fit window
+            win = slice_maker(y, x, width)
+            # make a fit object with a subset of the data
+            mypeak = Gauss2D(self.data[win])
+            # optimize params
+            mypeak.optimize_params(**kwargs)
             fit_coefs = mypeak.opt_params_dict()
-
             # need to place the fit coefs in the right place
-            fit_coefs['y0'] += obj[0].start
-            fit_coefs['x0'] += obj[1].start
+            fit_coefs['y0'] += win[0].start
+            fit_coefs['x0'] += win[1].start
             # Calc SNR for each peak
-            fit_coefs['SNR'] = fit_coefs['amp']/mypeak.noise
-
+            fit_coefs['noise'] = mypeak.noise
+            fit_coefs['SNR'] = fit_coefs['amp'] / fit_coefs['noise']
+            # append to peakfits
             peakfits.append(fit_coefs)
-            # TODO: Change this to forming a list of dictionaries which is then
-            # passed to the DataFrame constructor.
-
-        # we know that when the fit fails it returns 0, so replace with NaN
+        # construct DataFrame
         peakfits_df = pd.DataFrame(peakfits)
-        peakfits_df.sigma_x = np.abs(peakfits_df.sigma_x)
-        try:
-            peakfits_df.sigma_y = np.abs(peakfits_df.sigma_y)
-        except AttributeError:
-            pass
-
+        # internalize DataFrame
         self._fits = peakfits_df
-
+        # Return it to user
         return peakfits_df
 
     def prune_blobs(self, diameter):
@@ -407,7 +379,7 @@ class PeakFinder(object):
             for blob1, blob2 in itt.combinations(myBlobs, 2):
                 # take the norm of the difference in positions and compare
                 # with diameter
-                if norm((blob1-blob2)[0:2]) < diameter:
+                if norm((blob1 - blob2)[0:2]) < diameter:
                     # compare intensities and use the third column to keep
                     # track of which blobs to toss
                     if blob1[3] > blob2[3]:
@@ -417,8 +389,8 @@ class PeakFinder(object):
 
             # set internal blobs array to blobs_array[blobs_array[:, 2] > 0]
             self._blobs = np.array([
-                            a for b, a in zip(myBlobs, self.blobs) if b[3] > 0
-                            ])
+                a for b, a in zip(myBlobs, self.blobs) if b[3] > 0
+            ])
 
             # Return a copy of blobs incase user wants a onliner
             return self.blobs
@@ -428,8 +400,10 @@ class PeakFinder(object):
         ymax, xmax = self._data.shape
 
         my_blobs = np.array([
-                    blob for blob in self.blobs
-                    if (distance < blob[0] < ymax - distance) and (distance < blob[1] < xmax - distance)])
+            blob for blob in self.blobs
+            if ((distance < blob[0] < ymax - distance) and
+                (distance < blob[1] < xmax - distance))
+        ])
 
         my_blobs = my_blobs[my_blobs[:, 3].argsort()]
 
@@ -447,9 +421,9 @@ class PeakFinder(object):
         for blob in self.blobs:
             y, x, s, r = blob
             if diameter is None:
-                diameter = s*4
+                diameter = s * 4
 
-            c = plt.Circle((x, y), radius=diameter/2, color='r', linewidth=1,
+            c = plt.Circle((x, y), radius=diameter / 2, color='r', linewidth=1,
                            fill=False)
             ax.add_patch(c)
             if self.data.dtype != float:
@@ -459,9 +433,9 @@ class PeakFinder(object):
                 fmtstr = '{:.3f}'
 
             ax.annotate(fmtstr.format(r), xy=(x, y),
-                        xytext=(x+diameter/2, y+diameter/2), textcoords='data',
-                        color='k', backgroundcolor=(1, 1, 1, 0.5),
-                        xycoords='data')
+                        xytext=(x + diameter / 2, y + diameter / 2),
+                        textcoords='data', color='k',
+                        backgroundcolor=(1, 1, 1, 0.5), xycoords='data')
 
         return fig, ax
 
@@ -618,7 +592,7 @@ class SpectralPeakFinder(object):
         # results
         bg = np.median(data.mean(0), 0)
 
-        self.data = data-bg
+        self.data = data - bg
 
     def fix_hot_pixels(self, cutoff=9):
         '''
@@ -645,13 +619,13 @@ class SpectralPeakFinder(object):
         mean_data_med = median_filter(mean_data, 3)
 
         # subtract the median filtered data from the unfiltered data
-        data_minus = mean_data-mean_data_med
+        data_minus = mean_data - mean_data_med
 
         # calculate the z-score for each pixel
-        z_score = (data_minus-data_minus.mean())/data_minus.std()
+        z_score = (data_minus - data_minus.mean()) / data_minus.std()
 
         # find the points to remove
-        picked_points = (z_score > cutoff)*mean_data
+        picked_points = (z_score > cutoff) * mean_data
 
         # remove them from the data
         data -= picked_points
@@ -668,7 +642,7 @@ class SpectralPeakFinder(object):
         # calculate the average around the peaks
         mean_data_sum = uniform_filter1d(self.data, width, axis=1).sum(2)
         z_score = (mean_data_sum.max(0) -
-                   mean_data_sum.mean(0))/mean_data_sum.std(0)
+                   mean_data_sum.mean(0)) / mean_data_sum.std(0)
         bad_peaks = np.arange(len(z_score))[z_score > z_score_cutoff]
 
         self.peaks = [p for p in self.peaks if p not in bad_peaks]
