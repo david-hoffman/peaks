@@ -31,7 +31,7 @@ def _general_function_mle(params, xdata, ydata, function):
     # calculate the function
     f = function(xdata, *params)
     # calculate the MLE version of chi2
-    chi2 = 2*(f - ydata - ydata * np.log(f/ydata))
+    chi2 = 2 * (f - ydata - ydata * np.log(f / ydata))
     if chi2.min() < 0:
         # jury rigged to enforce positivity
         # once scipy 0.17 is released this won't be necessary.
@@ -205,15 +205,15 @@ class Gauss2D(object):
                 'rho cannot be greater than 1 or less than -1. Here rho is {}.'
                 .format(rho) +
                 '\nCoercing to {}'
-                .format(np.sign(rho)*0.99))
+                .format(np.sign(rho) * 0.99))
 
-            rho = np.sign(rho)*0.99
+            rho = np.sign(rho) * 0.99
 
-        z = (((x0 - mu0)/sigma0)**2 -
-             2*rho*(x0 - mu0)*(x1 - mu1)/(sigma0 * sigma1) +
-             ((x1 - mu1)/sigma1)**2)
+        z = (((x0 - mu0) / sigma0)**2 -
+             2 * rho * (x0 - mu0) * (x1 - mu1) / (sigma0 * sigma1) +
+             ((x1 - mu1) / sigma1)**2)
 
-        g = offset + amp*np.exp(-z/(2*(1 - rho**2)))
+        g = offset + amp * np.exp(-z / (2 * (1 - rho**2)))
         return g
 
     @classmethod
@@ -266,7 +266,7 @@ class Gauss2D(object):
         else:
             raise ValueError(
                 'len(args) = {}, number out of range!'.format(num_args)
-                )
+            )
 
     @classmethod
     def gauss2D_jac(cls, params, xdata):
@@ -319,12 +319,12 @@ class Gauss2D(object):
         x = xdata[0].ravel()
         y = xdata[1].ravel()
         amp, x0, y0, sigma_x, sigma_y, offset = params
-        value = cls.gauss2D_norot(xdata, *params).ravel()-offset
-        dydamp = value/amp
-        dydx0 = value*(x-x0)/sigma_x**2
-        dydsigmax = value*(x-x0)**2/sigma_x**3
-        dydy0 = value*(y-y0)/sigma_y**2
-        dydsigmay = value*(y-y0)**2/sigma_y**3
+        value = cls.gauss2D_norot(xdata, *params).ravel() - offset
+        dydamp = value / amp
+        dydx0 = value * (x - x0) / sigma_x**2
+        dydsigmax = value * (x - x0)**2 / sigma_x**3
+        dydy0 = value * (y - y0) / sigma_y**2
+        dydsigmay = value * (y - y0)**2 / sigma_y**3
         return np.vstack((dydamp, dydx0, dydy0, dydsigmax,
                           dydsigmay, np.ones_like(value)))
         # the below works, but speed up only for above
@@ -339,11 +339,11 @@ class Gauss2D(object):
         x = xdata[0].ravel()
         y = xdata[1].ravel()
         amp, x0, y0, sigma_x, offset = params
-        value = cls.gauss2D_sym(xdata, *params).ravel()-offset
-        dydamp = value/amp
-        dydx0 = value*(x-x0)/sigma_x**2
-        dydsigmax = value*(x-x0)**2/sigma_x**3
-        dydy0 = value*(y-y0)/sigma_x**2
+        value = cls.gauss2D_sym(xdata, *params).ravel() - offset
+        dydamp = value / amp
+        dydx0 = value * (x - x0) / sigma_x**2
+        dydsigmax = value * (x - x0)**2 / sigma_x**3
+        dydy0 = value * (y - y0) / sigma_x**2
         return np.vstack((dydamp, dydx0, dydy0, dydsigmax,
                           np.ones_like(value)))
         # new_params = np.insert(params, 4, 0)
@@ -380,7 +380,7 @@ class Gauss2D(object):
         else:
             raise ValueError(
                 'len(params) = {}, number out of range!'.format(num_args)
-                )
+            )
 
     @classmethod
     def gen_model(cls, data, *args):
@@ -417,6 +417,8 @@ class Gauss2D(object):
         '''
         A function for calculating the area of the model peak
 
+        Area = 2*amp*np.pi*sigma_x*sigma_y*np.sqrt(1-rho**2)
+
         Parameters
         ----------
         kwargs : dictionary
@@ -436,15 +438,16 @@ class Gauss2D(object):
 
         if num_params == 7:
             return abs(2 * np.pi * opt_params[0] * opt_params[3] *
-                       opt_params[4] * np.sqrt(1-opt_params[5]**2))
+                       opt_params[4] * np.sqrt(1 - opt_params[5]**2))
         elif num_params == 6:
-            return abs(2*np.pi*opt_params[0]*opt_params[3]*opt_params[4])
+            return abs(2 * np.pi * opt_params[0] * opt_params[3] *
+                       opt_params[4])
         else:
-            return abs(2*np.pi*opt_params[0]*opt_params[3]**2)
+            return abs(2 * np.pi * opt_params[0] * opt_params[3]**2)
 
     def optimize_params(self, guess_params=None, modeltype='norot',
-                        quiet=False, check_params=True, detrenddata=False,
-                        fit_type='ls'):
+                        quiet=False, bounds=(-np.inf, np.inf),
+                        checkparams=True, detrenddata=False, fittype='ls'):
         '''
         A function that will optimize the parameters for a 2D Gaussian model
         using a least squares method
@@ -510,7 +513,7 @@ class Gauss2D(object):
             # we'll catch this error later and alert the user with a printout
             warnings.simplefilter("ignore", OptimizeWarning)
 
-            if fit_type.lower() == 'mle':
+            if fittype.lower() == 'mle':
                 # monkey patch in mle functions
                 mp._general_function = _general_function_mle
                 mp._weighted_general_function = _weighted_general_function_mle
@@ -526,17 +529,17 @@ class Gauss2D(object):
                 # bounds = (-np.inf, np.inf)
 
             try:
-                # need to add bounds here when scipy 0.17 is released
                 popt, pcov, infodict, errmsg, ier = mp.curve_fit(
                     model_ravel, (xx, yy), data.ravel(), p0=guess_params,
-                    full_output=True, Dfun=self.model_jac, col_deriv=True)
+                    bounds=bounds, full_output=True, Dfun=self.model_jac,
+                    col_deriv=True)
             except RuntimeError as e:
                 # print(e)
                 # now we need to re-parse the error message to set all the
                 # flags pull the message
                 self.errmsg = e.args[0].replace(
                     'Optimal parameters not found: ', ''
-                    )
+                )
 
                 # run through possibilities for failure
                 errors = {0: "Improper",
@@ -558,7 +561,7 @@ class Gauss2D(object):
                 self.errmsg = errmsg
                 self.ier = ier
 
-                if check_params:
+                if checkparams:
                     self._check_params(popt)
 
                 # check to see if the covariance is bunk
@@ -577,13 +580,13 @@ class Gauss2D(object):
             if not quiet:
                 print('Fitting error: ' + self.errmsg)
 
-            self._popt = guess_params*np.nan
+            self._popt = guess_params * np.nan
             self._pcov = np.zeros((len(guess_params),
-                                   len(guess_params)))*np.nan
+                                   len(guess_params))) * np.nan
 
         if not self.error:
             # if no fitting error calc residuals and noise
-            self.residuals = self.data-self.fit_model
+            self.residuals = self.data - self.fit_model
             self.noise = self.residuals.std()
         else:
             # if there is an error set the noise to nan
@@ -617,7 +620,7 @@ class Gauss2D(object):
         # check to see if the amplitude makes sense
         # it must be greater than 0 but it can't be too much larger than the
         # entire range of data values
-        if not (0 < popt[0] < (data.max() - data.min())*5):
+        if not (0 < popt[0] < (data.max() - data.min()) * 5):
             self.errmsg = "Amplitude unphysical"
             self.ier = 11
 
@@ -662,24 +665,24 @@ class Gauss2D(object):
             else:
                 data = self._data.astype(float)
                 offset = data.min()
-                amp = data.max()-offset
+                amp = data.max() - offset
 
             # calculate the moments up to second order
             M = moments(data, 2)
 
             # calculate model parameters from the moments
             # https://en.wikipedia.org/wiki/Image_moment# Central_moments
-            xbar = M[1, 0]/M[0, 0]
-            ybar = M[0, 1]/M[0, 0]
-            xvar = M[2, 0]/M[0, 0]-xbar**2
-            yvar = M[0, 2]/M[0, 0]-ybar**2
-            covar = M[1, 1]/M[0, 0]-xbar*ybar
+            xbar = M[1, 0] / M[0, 0]
+            ybar = M[0, 1] / M[0, 0]
+            xvar = M[2, 0] / M[0, 0] - xbar**2
+            yvar = M[0, 2] / M[0, 0] - ybar**2
+            covar = M[1, 1] / M[0, 0] - xbar * ybar
 
             # place the model parameters in the return array
             params[:3] = amp, xbar, ybar
             params[3] = np.sqrt(np.abs(xvar))
             params[4] = np.sqrt(np.abs(yvar))
-            params[5] = covar/np.sqrt(np.abs(xvar*yvar))
+            params[5] = covar / np.sqrt(np.abs(xvar * yvar))
             params[6] = offset
 
             if abs(params[5]) < 1 or not detrenddata:
