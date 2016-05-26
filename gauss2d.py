@@ -35,7 +35,7 @@ def _general_function_mle(params, xdata, ydata, function):
     if chi2.min() < 0:
         # jury rigged to enforce positivity
         # once scipy 0.17 is released this won't be necessary.
-        return np.nan_to_num(inf)*np.ones_like(chi2)
+        return np.nan_to_num(np.inf) * np.ones_like(chi2)
     else:
         # return the sqrt because the np.leastsq will square and sum the result
         return np.sqrt(chi2)
