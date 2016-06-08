@@ -7,6 +7,7 @@ import pandas as pd
 import multiprocessing as mp
 import time
 import warnings
+import ctypes
 from scipy.optimize import curve_fit
 from scipy import ndimage as ndi
 from scipy.ndimage.filters import median_filter
@@ -175,10 +176,10 @@ class StackAnalyzer(object):
         # toc = time.time()
         blobs = self.peakfinder.blobs
         # some benchmark data is below. We can use to predict speed ups
-        tpeak = 0.09882644582385859
-        tpix = 8.983612057515226e-08
-        npix = self.stack.size
-        npeaks = len(blobs)
+        # tpeak = 0.09882644582385859
+        # tpix = 8.983612057515226e-08
+        # npix = self.stack.size
+        # npeaks = len(blobs)
 
         if 1 < nproc:
             # make sure we don't try to use more processors than we have
@@ -190,21 +191,24 @@ class StackAnalyzer(object):
             assert self.stack.dtype == np.uint16, ("Data is not"
                                                    "right format")
             # allocate shared memory for the array, this is fast in general
-            shared_array_base = mp.RawArray(np.ctypeslib.ctypes.c_uint16,
-                                            self.stack.size)
+            # shared_array_base = mp.RawArray("H", self.stack.size)
+            shared_array_base = np.ctypeslib.as_array(
+                mp.RawArray("H", self.stack.size))
+            shared_array_base.shape = shape
             # assign the array, this is much faster than initializing
             # directly, see google. BUT THIS IS THE BOTTLE NECK!!!
-            # tic = time.time()
-            shared_array_base[:] = self.stack.ravel()
-            # print("time to assign shared memory ", time.time() - tic)
+            tic = time.time()
+            # memoryview(shared_array_base).cast("B").cast("H")[:] = self.stack.ravel()
+            shared_array_base[:] = self.stack
+            print("time to assign shared memory ", time.time() - tic)
             # start pool, initilize array on each worker.
             with mp.Pool(nproc, _init_func,
                          (par_func, shared_array_base, shape)) as p:
                 print('Multiprocessing engaged with {} cores'.format(nproc))
                 # calculate the ratio of multi/serial
-                speedup = 1 / nproc + tpix * npix / (tpeak * npeaks)
-                if speedup > 0.9:
-                    warnings.warn("Expected speed up is {:.3f}".format(1 / speedup))
+                # speedup = 1 / nproc + tpix * npix / (tpeak * npeaks)
+                # if speedup > 0.9:
+                #     warnings.warn("Expected speed up is {:.3f}".format(1 / speedup))
 
                 # farm out the tasks
                 results = [p.apply_async(
@@ -378,8 +382,9 @@ def _init_func(func, stack, shape):
     shared stack as a variable. Also reshapes the array to be the
     correct size"""
     # decorate the function with a numpy array pointing to shared memory.
-    func.stack = np.ctypeslib.as_array(stack)
-    func.stack.shape = shape
+    # func.stack = np.ctypeslib.as_array(stack)
+    func.stack = stack
+    # func.stack.shape = shape
     # we can also make globals, put that's unpallatable
     # print('Making global')
     # global gstack

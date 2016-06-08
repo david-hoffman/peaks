@@ -374,7 +374,7 @@ class PeakFinder(object):
 
             # make a copy of blobs otherwise it will be changed
             myBlobs = self.blobs
-
+            # This would be a GREAT application for KDTrees.
             # cycle through all possible pairwise cominations of blobs
             for blob1, blob2 in itt.combinations(myBlobs, 2):
                 # take the norm of the difference in positions and compare
