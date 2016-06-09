@@ -2,6 +2,7 @@
 A set of classes for analyzing data stacks that contain punctate data
 '''
 import os
+import time
 import numpy as np
 import pandas as pd
 import multiprocessing as mp
@@ -176,18 +177,18 @@ class StackAnalyzer(object):
             # make sure we don't try to use more processors than we have
             if nproc > os.cpu_count():
                 nproc = os.cpu_count()
+            # save the data type character
+            dtype_char = self.stack.dtype.char
             # allocate shared memory for the array
-            # and wrap it in a buffer object.
-            shared_array_base = np.ctypeslib.as_array(
-                mp.RawArray(self.stack.dtype.char, self.stack.size))
-            # resize the shared array to the proper shape
-            shared_array_base.shape = self.stack.shape
-            # assign the array, this opertates through the numpy buffer
-            # so it's fast and has checking.
-            shared_array_base[:] = self.stack
-            # start pool, initilize array on each worker.
+            shared_array_base = mp.RawArray(dtype_char, self.stack.size)
+            # assign the array, this opertates through a memoryview
+            # so it's very fast but has no checking
+            mv_array = memoryview(shared_array_base)
+            # we have to cast through bytes because of Py3 peculiarities
+            mv_array.cast("B").cast(dtype_char)[:] = self.stack.ravel()
+            # start pool, initilize shared array on each worker.
             with mp.Pool(nproc, _init_func,
-                         (par_func, shared_array_base)) as p:
+                         (par_func, shared_array_base, self.stack.shape)) as p:
                 print('Multiprocessing engaged with {} cores'.format(nproc))
                 # farm out the tasks
                 results = [p.apply_async(
@@ -352,10 +353,11 @@ class PSFStackAnalyzer(StackAnalyzer):
         return fig, ax
 
 
-def _init_func(func, stack):
+def _init_func(func, stack, shape):
     """A utility function that decorates `func` to hold the
-    shared stack as a variable."""
-    func.stack = stack
+    shared stack as an accessable numpy array-like variable."""
+    func.stack = np.ctypeslib.as_array(stack)
+    func.stack.shape = shape
 
 
 def _fitPeaks_sim(fitwidth, blob, stack, **kwargs):
@@ -456,8 +458,6 @@ class SIMStackAnalyzer(StackAnalyzer):
     """
     docstring for SIMStackAnalyser
     """
-
-    par_func = _fitPeaks_sim
 
     def __init__(self, stack, norients, nphases, psfwidth=1.68,
                  periods=1, **kwargs):
