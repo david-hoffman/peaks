@@ -28,7 +28,7 @@ from .gauss2d import Gauss2D
 from dphplotting import display_grid
 # specialty numpy and scipy imports
 from scipy.signal import argrelmax
-from scipy.spatial import KDTree
+from scipy.spatial import cKDTree
 from dphutils import fft_gaussian_filter, slice_maker
 
 
@@ -373,7 +373,7 @@ class PeakFinder(object):
             # make a copy of blobs otherwise it will be changed
             # create the tree
             blobs = self.blobs
-            kdtree = KDTree(blobs[:, :2])
+            kdtree = cKDTree(blobs[:, :2])
             # query all pairs of points within diameter of each other
             list_of_conflicts = list(kdtree.query_pairs(radius))
             # sort the collisions by max amplitude of the pair
