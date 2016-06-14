@@ -201,8 +201,8 @@ class PeakFinder(object):
             # at the estimated center as well
             blobs = np.array([[y, x, s, self.data[y, x]] for y, x, s in blobs])
 
-            # sort blobs by the max amp value
-            blobs = blobs[blobs[:, 3].argsort()]
+            # sort blobs by the max amp value, descending
+            blobs = blobs[blobs[:, 3].argsort()][::-1]
 
         self._blobs = blobs
         return blobs
@@ -348,7 +348,7 @@ class PeakFinder(object):
         # Return it to user
         return peakfits_df
 
-    def prune_blobs(self, diameter):
+    def prune_blobs(self, radius):
             """
             Pruner method takes blobs list with the third column replaced by
             intensity instead of sigma and then removes the less intense blob
@@ -379,7 +379,7 @@ class PeakFinder(object):
             for blob1, blob2 in itt.combinations(myBlobs, 2):
                 # take the norm of the difference in positions and compare
                 # with diameter
-                if norm((blob1 - blob2)[0:2]) < diameter:
+                if norm((blob1 - blob2)[0:2]) < radius:
                     # compare intensities and use the third column to keep
                     # track of which blobs to toss
                     if blob1[3] > blob2[3]:
