@@ -10,8 +10,6 @@ import numpy as np
 import pandas as pd
 # we need a few extra features from matplot lib
 import matplotlib.pyplot as plt
-# we need ittertools for the pruner function defined below
-import itertools as itt
 # We want to be able to warn the user about potential problems
 import warnings
 # need log function
@@ -29,8 +27,8 @@ from .gauss2d import Gauss2D
 # plotting
 from dphplotting import display_grid
 # specialty numpy and scipy imports
-from numpy.linalg import norm
 from scipy.signal import argrelmax
+from scipy.spatial import KDTree
 from dphutils import fft_gaussian_filter, slice_maker
 
 
@@ -373,26 +371,44 @@ class PeakFinder(object):
             """
 
             # make a copy of blobs otherwise it will be changed
-            myBlobs = self.blobs
-            # This would be a GREAT application for KDTrees.
-            # cycle through all possible pairwise cominations of blobs
-            for blob1, blob2 in itt.combinations(myBlobs, 2):
-                # take the norm of the difference in positions and compare
-                # with diameter
-                if norm((blob1 - blob2)[0:2]) < radius:
-                    # compare intensities and use the third column to keep
-                    # track of which blobs to toss
-                    if blob1[3] > blob2[3]:
-                        blob2[3] = -1
+            # create the tree
+            blobs = self.blobs
+            kdtree = KDTree(blobs[:, :2])
+            # query all pairs of points within diameter of each other
+            list_of_conflicts = list(kdtree.query_pairs(radius))
+            # sort the collisions by max amplitude of the pair
+            # we want to deal with collisions between the largest
+            # blobs and nearest neighbors first:
+            # Consider the following sceneario in 1D
+            # A-B-C
+            # are all the same distance and colliding with amplitudes
+            # A > B > C
+            # if we start with the smallest, both B and C will be discarded
+            # If we start with the largest, only B will be
+            # Sort in descending order
+            list_of_conflicts.sort(
+                key=lambda x: max(blobs[x[0], -1], blobs[x[1], -1]),
+                reverse=True
+            )
+            # indices of pruned blobs
+            pruned_blobs = set()
+            # loop through conflicts
+            for idx_a, idx_b in list_of_conflicts:
+                # see if we've already pruned one of the pair
+                if (idx_a not in pruned_blobs) and (idx_b not in pruned_blobs):
+                    # compare based on amplitude
+                    if blobs[idx_a, -1] > blobs[idx_b, -1]:
+                        pruned_blobs.add(idx_b)
                     else:
-                        blob1[3] = -1
-
+                        pruned_blobs.add(idx_a)
+            # generate the pruned list
+            # pruned_blobs_set = {(blobs[i, 0], blobs[i, 1])
+            #                         for i in pruned_blobs}
             # set internal blobs array to blobs_array[blobs_array[:, 2] > 0]
-            self._blobs = np.array([
-                a for b, a in zip(myBlobs, self.blobs) if b[3] > 0
-            ])
-
-            # Return a copy of blobs incase user wants a onliner
+            self._blobs = blobs[[
+                i for i in range(len(blobs)) if i not in pruned_blobs
+            ]]
+            # Return a copy of blobs incase user wants a one-liner
             return self.blobs
 
     def remove_edge_blobs(self, distance):
