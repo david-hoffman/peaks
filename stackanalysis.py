@@ -2,7 +2,7 @@
 A set of classes for analyzing data stacks that contain punctate data
 '''
 import os
-import time
+# import time
 import numpy as np
 import pandas as pd
 import multiprocessing as mp
@@ -15,6 +15,7 @@ from .peakfinder import PeakFinder
 from .utils import gauss_fit, sine, scatterplot
 from scipy.fftpack import fft
 from dphutils import slice_maker
+from dphplotting import make_grid, clean_grid
 
 # TODO
 # Need to move all the fitting stuff into its own class and abstract as much
@@ -309,8 +310,8 @@ class PSFStackAnalyzer(StackAnalyzer):
             tempfit = fit.dropna().loc[subrange]
             z = tempfit.index.values
             amp, x, y, s_x, s_y = tempfit[
-                    ['amp', 'x0', 'y0', 'sigma_x', 'sigma_y']
-                ].values.T
+                ['amp', 'x0', 'y0', 'sigma_x', 'sigma_y']
+            ].values.T
 
             # TODO
             # need to make this robust to different fitting models.
@@ -339,7 +340,7 @@ class PSFStackAnalyzer(StackAnalyzer):
                     'sigma_z': abs(sigma_z),
                     'sigma_y': sigma_y,
                     'sigma_x': sigma_x,
-                    'SNR': famp/noise
+                    'SNR': famp / noise
                 })
 
         # make the DataFrame and set it as a object attribute
@@ -585,13 +586,13 @@ class SIMStackAnalyzer(StackAnalyzer):
 
                 # make guesses
                 # amp of sine wave is sqrt(2) the standard deviation
-                g_a = np.sqrt(2)*(data_fixed.std())
+                g_a = np.sqrt(2) * (data_fixed.std())
                 # offset is mean
                 g_o = data_fixed.mean()
                 # frequency is such that `nphases` covers `periods`
-                g_f = periods/nphases
+                g_f = periods / nphases
                 # guess of phase is from first data point (maybe mean of all?)
-                g_p = np.arcsin((data_fixed[0]-g_o)/g_a)-2*np.pi*g_f*x[0]
+                g_p = np.arcsin((data_fixed[0] - g_o) / g_a) - 2 * np.pi * g_f * x[0]
                 # make guess sequence
                 pguess = (g_a, g_f, g_p, g_o)
 
@@ -599,36 +600,23 @@ class SIMStackAnalyzer(StackAnalyzer):
                     popt, pcov = curve_fit(sine, x, data_fixed, p0=pguess)
                 except RuntimeError as e:
                     pass
-                    # print(e)
-                    # if fit fails, put nan
-                    # mod = np.nan
-                    # opt_a = np.nan
-                    # opt_f = np.nan
-                    # opt_p = np.nan
-                    # opt_o = np.nan
                 except TypeError as e:
                     print(e)
                     print(data_fixed)
-                    # mod = np.nan
-                    # opt_a = np.nan
-                    # opt_f = np.nan
-                    # opt_p = np.nan
-                    # opt_o = np.nan
                 else:
                     opt_a, opt_f, opt_p, opt_o = popt
-                    opt_a = np.abs(opt_a)
+                    if opt_a < 0:
+                        opt_a = np.abs(opt_a)
+                        opt_p += np.pi
                     # if any part of the fit is negative, mark as failure
                     if opt_o - opt_a > 0:
-                    #     mod = np.nan
-                    # else:
-                    #     # calc mod
-                        mod = 2*opt_a/(opt_o+opt_a)
-                    #    res = data_fixed-sine(x, *popt)
-                    #    SNR = (opt_o+opt_a)/res.std()
+                        mod = 2 * opt_a / (opt_o + opt_a)
+                        res = data_fixed - sine(x, *popt)
+                        SNR = (opt_o + opt_a) / res.std()
             # else:
 
             return {'modulation': mod, 'amp': opt_a, 'freq': opt_f,
-                    'phase': opt_p, 'offset': opt_o}
+                    'phase': opt_p, 'offset': opt_o, "sin_SNR": SNR}
 
         sim_params = []
 
@@ -649,7 +637,7 @@ class SIMStackAnalyzer(StackAnalyzer):
                 for k, v in params.items():
                     temp[k] = v
 
-                temp['SNR'] = np.median((trace.amp/trace.noise))
+                temp['SNR'] = np.median((trace.amp / trace.noise))
                 # calc the SNR using the noise from the fit
                 sim_params.append(temp)
 
@@ -672,8 +660,8 @@ class SIMStackAnalyzer(StackAnalyzer):
             ax[i].set_title(
                 'Orientation {}, avg mod = {:.3f}'.format(
                     name, orient.modulation.mean()
-                    )
                 )
+            )
 
         fig.tight_layout()
 
@@ -695,7 +683,7 @@ class SIMStackAnalyzer(StackAnalyzer):
             except ValueError as e:
                 raise(e)
             else:
-                # figure out the figure, pandas doesn't return it automatically.
+                # find out the figure, pandas doesn't return it automatically.
                 fig = axs.ravel()[0].get_figure()
                 # iterate through axes
                 for i, ax in enumerate(axs.ravel()):
@@ -720,7 +708,40 @@ class SIMStackAnalyzer(StackAnalyzer):
                 fig.tight_layout()
                 return fig, axs
 
+    def diagnostic_fits(self, num=9):
+        """Diagnostic, to check if sine fits are good
+        check best and worst SNR"""
+        # sort sim_params by SNR
+        sim_params = self.sim_params.sort_values("SNR")
+        # take the top and bottom
+        top_half = num // 2
+        bot_half = num - top_half
+        to_plot = pd.concat((sim_params.iloc[:bot_half],
+                             sim_params.iloc[-top_half:]))
+        # pull internal fits for later use
+        fits = self.fits
+        # make a grid axes
+        fig, axs = make_grid(num)
+        # loop through chosen ones
+        for (loc, params), ax in zip(to_plot.iterrows(), axs.ravel()):
+            # pull the amplitudes and plot
+            amp = fits[loc // self.norients].loc[params.orientation].amp
+            ax.plot(amp, "o")
+            # calculate the fit function and display
+            x = np.linspace(0, len(amp))
+            sine_fit = sine(x, params.amp, params.freq, params.phase,
+                            params.offset)
+            ax.plot(x, sine_fit)
+            # place a title with both SNRs
+            ax.set_title("gSNR = {:.0f}, sSNR = {:.0f}".format(
+                params.SNR, params.sin_SNR))
+        # make the layout tight and return
+        fig.tight_layout()
+        fig, axs = clean_grid(fig, axs)
+        return fig, axs
+
     def calc_modmap(self):
+        """WARNING, this is half baked"""
         nphases = self.nphases
         norients = self.norients
         stack = self.stack
@@ -731,8 +752,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         nphase_angle, ny, nx = stack.shape
 
         # check to make sure our dimensions match
-        assert nphase_angle == nphases*norients
-
+        assert nphase_angle == nphases * norients
         new_stack = stack.reshape(norients, nphases, ny, nx)
         # if we wanted to follow SIMCheck completely we'd have an Anscombe
         # transform here # ((2 * Math.sqrt((double)ab[a][b])) + (3.0d / 8))
@@ -748,13 +768,13 @@ class SIMStackAnalyzer(StackAnalyzer):
         if nphases > 3:
             # the highest frequency component is expected to be dominated
             # by noise
-            noise_stack = fft_new_stack[:, nphases//2]
+            noise_stack = fft_new_stack[:, nphases // 2]
             # average along angles and divide by average noise.
-            self.MCNR = amp_stack.mean(0)/noise_stack.mean()
+            self.MCNR = amp_stack.mean(0) / noise_stack.mean()
 
         # return the Amp-to-DC ratio. Max value should be 0.5
         # the returned stack is ordered by angle
-        self.ADCR = amp_stack/dc_stack
+        self.ADCR = amp_stack / dc_stack
 
     @property
     def ADCR(self):
