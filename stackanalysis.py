@@ -314,16 +314,23 @@ class SIMStackAnalyzer(StackAnalyzer):
                     # we only expect values between 0 and 1
                     ax.set_xlim([0, 1])
                     # from the title get the location in DataFrame of desired data.
-                    loc = int(ax.title.get_text())
-                    # calc mean
-                    mymean = sim_params.groupby('orientation').modulation.mean().loc[loc]
-                    # calc median
-                    mymedian = sim_params.groupby('orientation').modulation.median().loc[loc]
-                    # add lines
-                    ax.axvline(mymean, color='r')
-                    ax.axvline(mymedian, color='g')
-                    # replace title
-                    ax.set_title('{}, mean = {:.3f}, median = {:.3f}'.format(name, mymean, mymedian))
+                    num = ax.title.get_text()
+                    # check if the title is empyt, meaning group is empty
+                    if num != '':
+                        loc = int(num)
+                        grouped_mods = sim_params.groupby('orientation').modulation
+                        # calc mean
+                        mymean = grouped_mods.mean().loc[loc]
+                        # calc median
+                        mymedian = grouped_mods.median().loc[loc]
+                        # add lines
+                        ax.axvline(mymean, color='r')
+                        ax.axvline(mymedian, color='g')
+                        # replace title
+                        ax.set_title('{}, mean = {:.3f}, median = {:.3f}'.format(name, mymean, mymedian))
+                    else:
+                        # if group is empty remove the axis
+                        fig.delaxes(ax)
                 fig.tight_layout()
                 return fig, axs
 
