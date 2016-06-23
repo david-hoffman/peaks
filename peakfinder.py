@@ -426,7 +426,7 @@ class PeakFinder(object):
         self._blobs = my_blobs
         return my_blobs
 
-    def plot_blobs(self, diameter=None, size=12, **kwargs):
+    def plot_blobs(self, diameter=None, size=6, **kwargs):
 
         if self.blobs is None:
             raise UserWarning('No blobs have been found')

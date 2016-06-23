@@ -13,7 +13,7 @@ from scipy.ndimage.filters import median_filter
 from matplotlib import pyplot as plt
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
-from .utils import gauss_fit, sine, scatterplot
+from .utils import gauss_fit, sine, sine_jac, scatterplot
 from scipy.fftpack import fft
 from dphutils import slice_maker
 from dphplotting import make_grid, clean_grid
@@ -107,7 +107,7 @@ class StackAnalyzer(object):
         self.fits = fits
         return fits
 
-    def calc_params(self, nproc=0, par_func=None, **kwargs):
+    def _calc_params(self, nproc=0, par_func=None, **kwargs):
         """
         Super class method to calculate parameters for child stackanalyzers
 
@@ -167,8 +167,8 @@ class PSFStackAnalyzer(StackAnalyzer):
     def calc_psf_params(self, nproc=0, subrange=slice(None, None, None),
                         **kwargs):
         """Calculate the PSF paramters for all found peaks"""
-        params = super().calc_params(nproc=nproc, par_func=_calc_psf_param,
-                                     subrange=subrange, **kwargs)
+        params = super()._calc_params(nproc=nproc, par_func=_calc_psf_param,
+                                      subrange=subrange, **kwargs)
         self.psf_params = pd.DataFrame(params)
 
     def plot_psf_params(self, feature='z0', **kwargs):
@@ -255,10 +255,10 @@ class SIMStackAnalyzer(StackAnalyzer):
     def calc_sim_params(self, nproc=0, modtype='nl', **kwargs):
         """Calculate all SIM parameters for found peaks"""
         # pass in the relavent parameters to the superclass
-        params = super().calc_params(nproc=nproc, par_func=_calc_sim_param,
-                                     periods=self.periods,
-                                     nphases=self.nphases,
-                                     modtype=modtype, **kwargs)
+        params = super()._calc_params(nproc=nproc, par_func=_calc_sim_param,
+                                      periods=self.periods,
+                                      nphases=self.nphases,
+                                      modtype=modtype, **kwargs)
         self.sim_params = pd.DataFrame(list(itt.chain.from_iterable(params)))
 
     def plot_sim_params(self, orientations=None, **kwargs):
@@ -514,36 +514,31 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
 
 def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
     """Fitting subfucntion for PSFStackAnalyzer"""
-
+    # check if we're being dispatched from the multiprocessing pool
     if stack is None:
         stack = _fitPeaks_psf.stack
+    # unpack peak variables
     y, x, w, amp = blob
-
+    # make the slice around the blob
     myslice = slice_maker(y, x, fitwidth)
-
+    # find the start
     ystart = myslice[0].start
     xstart = myslice[1].start
-
     # insert the equivalent of `:` at the beginning
     myslice.insert(0, slice(None, None, None))
-
+    # make the substack
     substack = stack[myslice]
-
     # we could do median filtering on the substack before attempting to
     # find the max slice!
-
     # this could still get messed up by salt and pepper noise.
     # my_max = np.unravel_index(substack.argmax(), substack.shape)
     # use the sum of each z-slice
     my_max = substack.sum((1, 2)).argmax()
-
     # now change my slice to be that zslice
     myslice[0] = my_max
     substack = stack[myslice]
-
     # prep our container
     peakfits = []
-
     # initial fit
     max_z = Gauss2D(substack)
     max_z.optimize_params(**kwargs)
@@ -681,15 +676,15 @@ def _calc_psf_param(fit, subrange=slice(None, None, None), **kwargs):
     # pull values from DataFrame
     tempfit = fit.dropna().loc[subrange]
     z = tempfit.index.values
-    amp, x, y, s_x, s_y = tempfit[
-        ['amp', 'x0', 'y0', 'sigma_x', 'sigma_y']
-    ].values.T
+    # amp, x, y, s_x, s_y = tempfit[
+    #     ['amp', 'x0', 'y0', 'sigma_x', 'sigma_y']
+    # ].values.T
 
     # TODO
     # need to make this robust to different fitting models.
 
     # do the fit to a gaussian
-    popt = gauss_fit(z, amp, **kwargs)
+    popt = gauss_fit(z, tempfit.amp, **kwargs)
 
     # if the fit has not failed proceed
     if np.isfinite(popt).all():
@@ -697,23 +692,21 @@ def _calc_psf_param(fit, subrange=slice(None, None, None), **kwargs):
         famp, z0, sigma_z, offset = popt
 
         # interpolate other values (linear only)
-        x0 = np.interp(z0, z, x)
-        y0 = np.interp(z0, z, y)
-        sigma_x = np.interp(z0, z, s_x)
-        sigma_y = np.interp(z0, z, s_y)
+        # x0 = np.interp(z0, z, x)
+        # y0 = np.interp(z0, z, y)
+        # sigma_x = np.interp(z0, z, s_x)
+        # sigma_y = np.interp(z0, z, s_y)
+        result = {k: np.interp(z0, z, tempfit[k]) for k in tempfit}
 
         noise = tempfit.noise.mean()
         # form a dictionary for easy DataFrame creation.
-        result = {
+        fit_result = {
             'amp': famp,
             'z0': z0,
-            'y0': y0,
-            'x0': x0,
             'sigma_z': abs(sigma_z),
-            'sigma_y': sigma_y,
-            'sigma_x': sigma_x,
             'SNR': famp / noise
         }
+        result.update(fit_result)
     else:
         result = None
     return result
@@ -752,6 +745,8 @@ def calc_mod_nl(data, periods, nphases):
 
     Also, add a Jacobian for the curve_fit
     """
+    # TODO: this part should be refactored into a function called
+    # sine_fit, it should return a list of nan if it fails
     mod = np.nan
     opt_a = np.nan
     opt_f = np.nan
@@ -784,7 +779,11 @@ def calc_mod_nl(data, periods, nphases):
         pguess = (g_a, g_f, g_p, g_o)
 
         try:
+            # The jacobian actually slows down the fitting my guess is there
+            # aren't generally enough points to make it worthwhile
             popt, pcov = curve_fit(sine, x, data_fixed, p0=pguess)
+            # popt, pcov = curve_fit(sine, x, data_fixed, p0=pguess,
+            #                        Dfun=sine_jac, col_deriv=True)
         except RuntimeError as e:
             pass
         except TypeError as e:
