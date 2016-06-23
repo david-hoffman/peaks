@@ -149,7 +149,7 @@ def grid(x, y, z, resX=1000, resY=1000, method='cubic'):
     return X, Y, Z
 
 
-def scatterplot(z, y, x, ax=None, fig=None, cmap='viridis', **kwargs):
+def scatterplot(z, y, x, ax=None, fig=None, cmap="plasma", **kwargs):
     """A way to make a nice scatterplot with contours."""
     if fig is None or ax is None:
         fig, ax = plt.subplots(1, 1, squeeze=True, figsize=(6, 6))
