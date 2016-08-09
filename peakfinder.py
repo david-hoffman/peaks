@@ -325,7 +325,7 @@ class PeakFinder(object):
         # iterate through blobs
         for y, x, s, r in self.blobs:
             # make a fit window
-            win = slice_maker(y, x, width)
+            win = slice_maker(int(y), int(x), width)
             # make a fit object with a subset of the data
             mypeak = Gauss2D(self.data[win])
             # optimize params

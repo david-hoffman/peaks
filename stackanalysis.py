@@ -188,10 +188,10 @@ class SIMStackAnalyzer(StackAnalyzer):
                  periods=1, **kwargs):
         # make sure the stack has the right shape
         my_shape = stack.shape
-        assert len(my_shape) == 3, ("Stack has wrong number of dimensions,",
+        assert len(my_shape) == 3, ("Stack has wrong number of dimensions,"
                                     " dim = {}").format(my_shape)
-        assert stack.shape[0] == norients * nphases, ("Number of images does",
-                                                      " not equal",
+        assert stack.shape[0] == norients * nphases, ("Number of images does"
+                                                      " not equal"
                                                       " orients * phases")
 
         super().__init__(stack)
