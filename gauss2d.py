@@ -476,10 +476,8 @@ class Gauss2D(object):
                 guess_params = np.delete(guess_params, 5)
 
         # handle the case where the user passes a dictionary of values.
-        try:
+        if isinstance(guess_params, dict):
             guess_params = self.dict_to_params(guess_params)
-        except IndexError as e:
-            pass
 
         self._guess_params = guess_params
 
@@ -744,9 +742,7 @@ class Gauss2D(object):
         ...     'offset': 7})
         array([1, 2, 3, 4, 5, 6, 7])
         '''
-
         keys = ['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'rho', 'offset']
-
         values = []
         for k in keys:
             try:
