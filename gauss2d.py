@@ -351,7 +351,7 @@ class Gauss2D(object):
         # return np.delete(cls.gauss2D_jac(new_params, xdata), (4, 5), axis=0)
 
     @classmethod
-    def model_jac(cls, params, xdata_tuple, ydata, func):
+    def model_jac(cls, xdata_tuple, *params):
         '''
         Chooses the correct model jacobian function to use based on the number
         of arguments passed to it
@@ -531,7 +531,7 @@ class Gauss2D(object):
             try:
                 popt, pcov, infodict, errmsg, ier = mp.curve_fit(
                     model_ravel, (xx, yy), data.ravel(), p0=guess_params,
-                    bounds=bounds, full_output=True, Dfun=self.model_jac,
+                    bounds=bounds, full_output=True, jac=self.model_jac,
                     col_deriv=True)
             except RuntimeError as e:
                 # print(e)
