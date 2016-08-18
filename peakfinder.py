@@ -197,7 +197,8 @@ class PeakFinder(object):
             # blobs, as returned, has the third index as the estimated width
             # for our application it will be beneficial to have the intensity
             # at the estimated center as well
-            blobs = np.array([[y, x, s, self.data[y, x]] for y, x, s in blobs])
+            blobs = np.array([[y, x, s, self.data[int(y), int(x)]]
+                              for y, x, s in blobs])
 
             # sort blobs by the max amp value, descending
             blobs = blobs[blobs[:, 3].argsort()][::-1]
@@ -288,7 +289,6 @@ class PeakFinder(object):
                 # recenter
                 dict_params['x0'] -= obj[1].start
                 dict_params['y0'] -= obj[0].start
-
                 params = Gauss2D.dict_to_params(dict_params)
                 fake_data = Gauss2D.gen_model(data[obj], *params)
                 ax.contour(fake_data, extent=ex, colors='w', origin='image')
