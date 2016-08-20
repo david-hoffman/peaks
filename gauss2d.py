@@ -726,6 +726,34 @@ class Gauss2D(object):
 
         return {k: p for k, p in zip(keys, params)}
 
+    def params_errors_dict(self):
+        """Return a dictionary of errors"""
+
+        keys = [
+            'amp_e',
+            'x0_e',
+            'y0_e',
+            'sigma_x_e',
+            'sigma_y_e',
+            'rho_e',
+            'offset_e'
+        ]
+
+        # pull the variances of the parameters from the covariance matrix
+        # take the sqrt to get the errors
+        params = np.sqrt(np.diag(self.pcov))
+
+        num_params = len(params)
+
+        # adjust the dictionary size
+        if num_params < 7:
+            keys.remove('rho_e')
+
+        if num_params < 6:
+            keys.remove('sigma_y_e')
+
+        return {k: p for k, p in zip(keys, params)}
+
     @classmethod
     def dict_to_params(cls, d):
         '''
@@ -754,6 +782,13 @@ class Gauss2D(object):
 
     def opt_params_dict(self):
         return self._params_dict(self.opt_params)
+
+    def all_params_dict(self):
+        """Return the parameters and there estimated errors all in one dictionary
+        the errors will have the same key plus a '_e'"""
+        params_dict = self.opt_params_dict()
+        params_dict.update(self.params_errors_dict())
+        return params_dict
 
     def guess_params_dict(self):
         '''

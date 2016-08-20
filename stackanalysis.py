@@ -495,7 +495,7 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
             # if there's not an error update center of fitting window and
             # move on to the next fit
             if not fit.error:
-                popt_d = fit.opt_params_dict()
+                popt_d = fit.all_params_dict()
                 popt_d['x0'] += xstart
                 popt_d['y0'] += ystart
 
@@ -509,7 +509,7 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
                 x0 = int(round(popt_d['x0']))
             else:
                 # if the fit fails, make sure to _not_ update positions.
-                bad_fit = fit.opt_params_dict()
+                bad_fit = fit.all_params_dict()
                 bad_fit['slice'] = s
                 # noise of a failed fit is not really useful
                 popt_d['noise'] = np.nan
@@ -553,7 +553,7 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
     if np.isfinite(max_z.opt_params).all():
 
         # recenter the coordinates and add a slice variable
-        opt_params = max_z.opt_params_dict()
+        opt_params = max_z.all_params_dict()
         opt_params['slice'] = my_max
         opt_params['x0'] += xstart
         opt_params['y0'] += ystart
@@ -651,7 +651,7 @@ def _fitPeaks_sim(fitwidth, blob, stack, **kwargs):
             fit.optimize_params(guess_params=guess_params, **kwargs)
 
             # get the optimized parameters as a dict
-            opt = fit.opt_params_dict()
+            opt = fit.all_params_dict()
 
             # update coordinates
             opt['x0'] += xstart

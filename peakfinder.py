@@ -148,8 +148,13 @@ class PeakFinder(object):
     # Methods #
     ###########
 
-    def estimate_background(self):
-        self.thresh = np.median(self.data)
+    def estimate_background(self, method="median"):
+        if method == "median":
+            self.thresh = np.median(self.data)
+        elif method == "mode":
+            self.thresh = np.bincount(self.data.ravel()).argmax()
+        else:
+            raise ValueError("Invalid option for `method`: {}".format(method))
 
     def find_blobs(self, method='dog', **kwargs):
         '''
@@ -330,7 +335,7 @@ class PeakFinder(object):
             mypeak = Gauss2D(self.data[win])
             # optimize params
             mypeak.optimize_params(**kwargs)
-            fit_coefs = mypeak.opt_params_dict()
+            fit_coefs = mypeak.all_params_dict()
             # need to place the fit coefs in the right place
             fit_coefs['y0'] += win[0].start
             fit_coefs['x0'] += win[1].start
