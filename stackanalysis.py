@@ -450,12 +450,14 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
     y0 = int(round(popt_d['y0']))
     x0 = int(round(popt_d['x0']))
 
-    if len(popt_d) == 6:
+    if len(popt_d) == 6 * 2:
         modeltype = 'norot'
-    elif len(popt_d) == 5:
+    elif len(popt_d) == 5 * 2:
         modeltype = 'sym'
-    else:
+    elif len(popt_d) == 7 * 2:
         modeltype = 'full'
+    else:
+        raise ValueError("Dictionary is too big {}".format(popt_d))
 
     for s in slices:
 
