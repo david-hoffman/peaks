@@ -14,7 +14,7 @@ from skimage.measure import moments
 from scipy.optimize import OptimizeWarning
 # import curve_fit in a way that we can monkey patch it.
 import scipy.optimize.minpack as mp
-
+from scipy.linalg import solve_triangular
 # need to detrend data before estimating parameters
 from .utils import detrend
 # Plotting
@@ -35,22 +35,54 @@ def _general_function_mle(params, xdata, ydata, function):
     if chi2.min() < 0:
         # jury rigged to enforce positivity
         # once scipy 0.17 is released this won't be necessary.
+        # don't know what the above comment means ...
+        warnings.warn("Chi^2 is less than 0")
         return np.nan_to_num(np.inf) * np.ones_like(chi2)
     else:
         # return the sqrt because the np.leastsq will square and sum the result
         return np.sqrt(chi2)
 
 
-def _weighted_general_function_mle(params, xdata, ydata, function, weights):
-    return weights * _general_function_mle(params, xdata, ydata, function)
+def _wrap_func_mle(func, xdata, ydata, transform):
+    if transform is None:
+        def func_wrapped(params):
+            return _general_function_mle(params, xdata, ydata, func)
+    elif transform.ndim == 1:
+        def func_wrapped(params):
+            return transform * (_general_function_mle(params, xdata, ydata, func))
+    else:
+        # Chisq = (y - yd)^T C^{-1} (y-yd)
+        # transform = L such that C = L L^T
+        # C^{-1} = L^{-T} L^{-1}
+        # Chisq = (y - yd)^T L^{-T} L^{-1} (y-yd)
+        # Define (y-yd)' = L^{-1} (y-yd)
+        # by solving
+        # L (y-yd)' = (y-yd)
+        # and minimize (y-yd)'^T (y-yd)'
+        def func_wrapped(params):
+            return solve_triangular(transform, _general_function_mle(params, xdata, ydata, func), lower=True)
+    return func_wrapped
 
 
-def _general_function_ls(params, xdata, ydata, function):
-    return function(xdata, *params) - ydata
-
-
-def _weighted_general_function_ls(params, xdata, ydata, function, weights):
-    return weights * _general_function_ls(params, xdata, ydata, function)
+def _wrap_func_ls(func, xdata, ydata, transform):
+    if transform is None:
+        def func_wrapped(params):
+            return func(xdata, *params) - ydata
+    elif transform.ndim == 1:
+        def func_wrapped(params):
+            return transform * (func(xdata, *params) - ydata)
+    else:
+        # Chisq = (y - yd)^T C^{-1} (y-yd)
+        # transform = L such that C = L L^T
+        # C^{-1} = L^{-T} L^{-1}
+        # Chisq = (y - yd)^T L^{-T} L^{-1} (y-yd)
+        # Define (y-yd)' = L^{-1} (y-yd)
+        # by solving
+        # L (y-yd)' = (y-yd)
+        # and minimize (y-yd)'^T (y-yd)'
+        def func_wrapped(params):
+            return solve_triangular(transform, func(xdata, *params) - ydata, lower=True)
+    return func_wrapped
 
 
 class Gauss2D(object):
@@ -513,19 +545,10 @@ class Gauss2D(object):
 
             if fittype.lower() == 'mle':
                 # monkey patch in mle functions
-                mp._general_function = _general_function_mle
-                mp._weighted_general_function = _weighted_general_function_mle
-                # upper_bound = np.ones_like(guess_params)*np.inf
-                # lower_bound = np.ones_like(guess_params)*(-np.inf)
-                # lower_bound[0] = 0
-                # lower_bound[-1] = 0
-                # bounds = (lower_bound, upper_bound)
+                mp._wrap_func = _wrap_func_mle
             else:
                 # use standard ls
-                mp._general_function = _general_function_ls
-                mp._weighted_general_function = _weighted_general_function_ls
-                # bounds = (-np.inf, np.inf)
-
+                mp._wrap_func = _wrap_func_ls
             try:
                 popt, pcov, infodict, errmsg, ier = mp.curve_fit(
                     model_ravel, (xx, yy), data.ravel(), p0=guess_params,
