@@ -745,7 +745,7 @@ def calc_mod(data):
     return {"modulation": mod}
 
 
-def calc_mod_nl(data, periods, nphases):
+def calc_mod_ls(data, periods, nphases):
     """
     Need to change this so that it:
     - first tries to fit only the amplitude and phase
@@ -819,7 +819,7 @@ def _calc_sim_param(fit, *, periods, nphases, modtype, **kwargs):
     for i, trace in fit.groupby(level='orientation'):
         # pull amplitude values
         if modtype == 'nl':
-            params = calc_mod_nl(trace.amp.values, periods, nphases)
+            params = calc_mod_ls(trace.amp.values, periods, nphases)
         else:
             params = calc_mod(trace.amp.values)
 
