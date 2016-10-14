@@ -295,10 +295,11 @@ class SIMStackAnalyzer(StackAnalyzer):
         # check if they have any length
         if len(sim_params):
             try:
-                axs = sim_params.hist(bins=int(np.sqrt(len(sim_params))),
-                                      column='modulation', by='orientation',
-                                      figsize=(20, 4), layout=(1, 5),
-                                      histtype='stepfilled')
+                axs = sim_params.hist(
+                    bins=int(np.sqrt(len(sim_params))), column='modulation',
+                    by='orientation', figsize=(4 * self.norients, 4),
+                    layout=(1, self.norients), histtype='stepfilled'
+                )
             except ValueError as e:
                 raise(e)
             else:
