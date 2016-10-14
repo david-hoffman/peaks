@@ -5,12 +5,14 @@ import os
 # import time
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import itertools as itt
 import multiprocessing as mp
 from scipy.optimize import curve_fit
 from scipy import ndimage as ndi
 from scipy.ndimage.filters import median_filter
 from matplotlib import pyplot as plt
+from matplotlib.colors import ColorConverter
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
 from .utils import gauss_fit, sine, sine_jac, scatterplot
@@ -144,6 +146,40 @@ class StackAnalyzer(object):
         # clear nones (i.e. unsuccessful fits)
         params = [param for param in params if param is not None]
         return params
+
+    def drift_plot(self, title=""):
+        """Plot the average change in x0 and y0"""
+        # set up plot
+        fig, (ax0, ax1) = plt.subplots(1, 2)
+        # make holders for coordinates
+        x = []
+        y = []
+        # loop through fits
+        for f in self.fits:
+            # if everything is finite add the coordinates minus bias
+            if np.isfinite(f.x0).all() and np.isfinite(f.y0).all():
+                x.append(f.x0 - f.x0.mean())
+                y.append(f.y0 - f.y0.mean())
+        # plot the mean with ci 90% bands
+        sns.tsplot(x, ax=ax0, ci=90, color='b')
+        sns.tsplot(y, ax=ax0, ci=90, color='r')
+        ax0.set_xlabel('Frame #')
+        ax0.set_ylabel('Distance (pixel)')
+        # flatten data
+        xar = np.array(x).ravel()
+        yar = np.array(y).ravel()
+        # determine good histogram bin size
+        nbins = int(np.sqrt(xar.size))
+        # plot hists
+        ax1.hist(xar, color=ColorConverter().to_rgba("b", 0.5), normed=True,
+                 label="$x$", bins=nbins, histtype="stepfilled", range=(-1, 1))
+        ax1.hist(yar, color=ColorConverter().to_rgba("r", 0.5), normed=True,
+                 label="$y$", bins=nbins, histtype="stepfilled", range=(-1, 1))
+        ax1.set_xlabel("Distance (pixel)")
+        ax1.legend()
+        fig.suptitle(title)
+        fig.tight_layout()
+        return fig, (ax0, ax1)
 
 
 class PSFStackAnalyzer(StackAnalyzer):
