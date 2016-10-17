@@ -334,7 +334,8 @@ class SIMStackAnalyzer(StackAnalyzer):
                 axs = sim_params.hist(
                     bins=int(np.sqrt(len(sim_params))), column='modulation',
                     by='orientation', figsize=(4 * self.norients, 4),
-                    layout=(1, self.norients), histtype='stepfilled'
+                    layout=(1, self.norients), histtype='stepfilled',
+                    normed=True, sharex=True, sharey=True
                 )
             except ValueError as e:
                 raise(e)
