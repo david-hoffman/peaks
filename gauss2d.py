@@ -595,6 +595,11 @@ class Gauss2D(object):
         # save parameters for later use
         # if the error flag is good, proceed
         if self.ier in [1, 2, 3, 4]:
+            # make sure sigmas are positive
+            if popt.size > 5:
+                popt[3:5] = abs(popt[3:5])
+            else:
+                popt[3] = abs(popt[3])
             self._popt = popt
             self._pcov = pcov
         else:
