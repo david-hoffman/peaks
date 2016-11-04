@@ -1,8 +1,18 @@
-# Copyright David P. Hoffman
-
-'''
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# gauss2d.py
+"""
 Class for generating and fitting 2D Gaussian peaks
-'''
+
+Supports both least squares and MLE fitting and gaussian peaks
+parameterized by a single width, widths along each axis and widths
+along arbitrary axes. Fitting can be done with manually specified
+guesses or initial guesses will be estimated from the data.
+
+Supports parameter passing through dicts and tuples.
+
+Copyright (c) 2016, David Hoffman
+"""
 
 # need to be able to deal with warnings
 import warnings
