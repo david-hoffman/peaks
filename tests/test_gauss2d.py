@@ -6,6 +6,7 @@ import os
 import numpy as np
 from numpy.testing import assert_array_equal, assert_allclose
 import unittest
+from itertools import product
 
 
 class TestGauss2DBasics(unittest.TestCase):
@@ -139,95 +140,134 @@ class TestGauss2DBasics(unittest.TestCase):
         assert_raises(ValueError, Gauss2D.model, *np.arange(10))
 
 
-class TestGauss2DSelfConsistency(unittest.TestCase):
+class _TestGauss2DSelfConsistencyBase(unittest.TestCase):
     """test the self consistency of the model"""
+
+    def _make_coefs(self):
+        """Fixed Coefs"""
+        assert False
+        # ny, nx = 16, 16
+        # # make grid
+        # self.yy, self.xx = np.indices((ny, nx))
+        # # choose center
+        # y0, x0 = 5, 13
+        # # choose sigmas
+        # sigma_y, sigma_x = 5, 3
+        # # choose amp
+        # amp = 10
+        # # choose rho
+        # rho = 0.5
+        # # choose offset
+        # offset = 20
+        # return amp, x0, y0, sigma_x, sigma_y, rho, offset
 
     def setUp(self):
         """Set up our parameters"""
         # choose size
-        ny, nx = np.random.randint(10, 100, 2)
+        amp, x0, y0, sigma_x, sigma_y, rho, offset = self._make_coefs()
+        # make stuff
+        gt_coefs_full = np.array((amp, x0, y0, sigma_x, sigma_y, rho,
+                                  offset))
+        gt_full = Gauss2D.model((self.xx, self.yy),
+                                *gt_coefs_full)
+        gt_coefs_norot = np.array((amp, x0, y0, sigma_x, sigma_y, offset))
+        gt_norot = Gauss2D.model((self.xx, self.yy),
+                                 *gt_coefs_norot)
+        gt_coefs_sym = np.array((amp, x0, y0, sigma_x, offset))
+        gt_sym = Gauss2D.model((self.xx, self.yy),
+                               *gt_coefs_sym)
+        self.coefs = dict(sym=gt_coefs_sym, norot=gt_coefs_norot,
+                          full=gt_coefs_full)
+        self.data = dict(sym=gt_sym, norot=gt_norot, full=gt_full)
+
+
+def _self_consistency_test_factory(guess, modeltype, fittype, snr):
+    """Build the self-consistency tests so I don't have to"""
+    # set up doc string for returned function
+    doc_str = "Testing guess={}, modeltype={}, fittype={}, snr={}"
+    # build name of function
+    name = "Test_modeltype_{}_fittype_{}".format(modeltype, fittype)
+    # build test (need the underscore otherwise nose will pick it up)...
+
+    def _test(self):
+        # pull proper data and coefs
+        coefs = self.coefs[modeltype]
+        data = self.data[modeltype]
+        # add noise
+        if snr:
+            amp = coefs[0]
+            noise_data = (amp / snr) * np.random.randn(*data.shape)
+        else:
+            noise_data = 0
+        # build object to test
+        test_g = Gauss2D(data + noise_data)
+        # speficify guesses
+        if not guess:
+            coefs = None
+        # grab optimized coefs
+        test_coefs = test_g.optimize_params(
+            guess_params=coefs, modeltype=modeltype, fittype=fittype
+        )
+        # do the actual test
+        assert False
+        assert_allclose(test_coefs, coefs)
+    # add doc string
+    _test.__doc__ = doc_str.format(guess, modeltype, fittype, snr)
+    if snr:
+        name += "_wSNR_{}".format(snr)
+    if guess:
+        name += "_wGuess"
+    return _test, name
+
+# add tests to classes
+# for guess, modeltype, fittype, snr in product((True, False), ("sym", "norot", "full"), ("ls", "mle"), (0, 10)):
+#     test_func, func_name = _self_consistency_test_factory(guess, modeltype, fittype, snr)
+#     setattr(_Gauss2DSelfConsistencyBase, func_name, test_func)
+
+
+# add tests to classes
+for guess, modeltype, fittype, snr in product((True, False), ("sym", ), ("ls", ), (0, )):
+    test_func, func_name = _self_consistency_test_factory(guess, modeltype,
+                                                           fittype, snr)
+    setattr(_TestGauss2DSelfConsistencyBase, func_name, test_func)
+
+
+# class TestGauss2DSelfConsistencyRand(_Gauss2DSelfConsistencyBase):
+
+#     def _make_coefs(self):
+#         """"""
+#         ny, nx = np.random.randint(10, 100, 2)
+#         # make grid
+#         self.yy, self.xx = np.indices((ny, nx))
+#         # choose center
+#         y0, x0 = np.random.random(2) * (ny, nx)
+#         # choose sigmas
+#         sigma_y, sigma_x = 0.1 * np.random.random(2) * (ny, nx)
+#         # choose amp
+#         amp = (np.random.random() + 1.0) * 10
+#         # choose rho
+#         rho = (np.random.random() * 2 - 1) * 0.99
+#         # choose offset
+#         offset = np.random.random() * 10
+#         return amp, x0, y0, sigma_x, sigma_y, rho, offset
+
+
+class TestGauss2DSelfConsistencyFixed(_TestGauss2DSelfConsistencyBase):
+    """Test self consistency with fixed numbers"""
+
+    def _make_coefs(self):
+        """Fixed Coefs"""
+        ny, nx = 16, 16
         # make grid
         self.yy, self.xx = np.indices((ny, nx))
         # choose center
-        y0, x0 = np.random.random(2) * (ny, nx)
+        y0, x0 = 5, 13
         # choose sigmas
-        sigma_y, sigma_x = 0.1 * np.random.random(2) * (ny, nx)
+        sigma_y, sigma_x = 5, 3
         # choose amp
-        amp = (np.random.random() + 1.0) * 10
+        amp = 10
         # choose rho
-        rho = (np.random.random() * 2 - 1) * 0.99
+        rho = 0.5
         # choose offset
-        offset = np.random.random() * 10
-        self.gt_coefs_full = np.array((amp, x0, y0, sigma_x, sigma_y, rho,
-                                       offset))
-        self.gt_full = Gauss2D.model((self.xx, self.yy),
-                                     *self.gt_coefs_full)
-        self.gt_coefs_norot = np.array((amp, x0, y0, sigma_x, sigma_y, offset))
-        self.gt_norot = Gauss2D.model((self.xx, self.yy),
-                                      *self.gt_coefs_norot)
-        self.gt_coefs_sym = np.array((amp, x0, y0, sigma_x, offset))
-        self.gt_sym = Gauss2D.model((self.xx, self.yy),
-                                    *self.gt_coefs_sym)
-
-    def test_setup(self):
-        """test that setup works"""
-        pass
-
-    def _test_fit_no_noise(ground_truth, ground_truth_coefs, modeltype,
-                           fittype):
-        """Test full fit"""
-        test_g = Gauss2D(ground_truth)
-        test_coefs = test_g.optimize_params(modeltype=modeltype,
-                                            fittype=fittype)
-        assert_allclose(test_coefs, ground_truth_coefs)
-
-    def test_fit_norot_no_noise_no_guess(self):
-        """Make sure results are good for norot, no noise, no guess"""
-        test_g = Gauss2D(self.gt_norot)
-        test_coefs = test_g.optimize_params(modeltype='norot', fittype='ls')
-        assert_allclose(test_coefs, self.gt_coefs_norot)
-
-    def test_fit_norot_no_noise(self):
-        """Make sure results are good for norot, no noise"""
-        test_g = Gauss2D(self.gt_norot)
-        test_coefs = test_g.optimize_params(self.gt_coefs_norot, fittype='ls')
-        assert_allclose(test_coefs, self.gt_coefs_norot)
-
-    def test_fit_norot_no_noise_no_guess_mle(self):
-        """Make sure results are good for norot, no noise, no guess, mle"""
-        test_g = Gauss2D(self.gt_norot)
-        test_coefs = test_g.optimize_params(modeltype='norot', fittype='mle')
-        assert_allclose(test_coefs, self.gt_coefs_norot)
-
-    def test_fit_norot_no_noise_mle(self):
-        """Make sure results are good for norot, no noise, mle"""
-        test_g = Gauss2D(self.gt_norot)
-        test_coefs = test_g.optimize_params(self.gt_coefs_norot, fittype='mle')
-        assert_allclose(test_coefs, self.gt_coefs_norot)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        offset = 20
+        return amp, x0, y0, sigma_x, sigma_y, rho, offset
