@@ -160,6 +160,7 @@ class StackAnalyzer(object):
             if np.isfinite(f.x0).all() and np.isfinite(f.y0).all():
                 x.append(f.x0 - f.x0.mean())
                 y.append(f.y0 - f.y0.mean())
+        assert x and y, "x or y is empty"
         # plot the mean with ci 90% bands
         sns.tsplot(x, ax=ax0, ci=90, color='b')
         sns.tsplot(y, ax=ax0, ci=90, color='r')

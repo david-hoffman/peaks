@@ -320,9 +320,9 @@ class Gauss2D(object):
         amp, mu0, mu1, sigma0, sigma1, rho, offset = params
         # calculate the main value, minus offset
         # (derivative of constant is zero)
-        value = cls.gauss2D(xdata, *params).ravel()-offset
+        value = cls.gauss2D(xdata, *params).ravel() - offset
 
-        dydamp = value/amp
+        dydamp = value / amp
 
         dydmu0 = value * (
                 (2*(x0-mu0))/sigma0**2 - (2*rho*(x1-mu1))/(sigma0 * sigma1)
@@ -350,8 +350,10 @@ class Gauss2D(object):
               (x1-mu1)**2/sigma1**2))/((1-rho**2)**2)
             )
         # now return
+        # coefs = np.array((dydamp, dydmu0, dydmu1, dydsigma0, dydsigma1, dydrho))
+        # result = value[:, np.newaxis] * coefs[newaxis]
         return np.vstack((dydamp, dydmu0, dydmu1, dydsigma0, dydsigma1, dydrho,
-                          np.ones_like(value)))
+                          np.ones_like(value))).T
 
     @classmethod
     def gauss2D_norot_jac(cls, params, xdata):
@@ -368,7 +370,7 @@ class Gauss2D(object):
         dydy0 = value * (y - y0) / sigma_y**2
         dydsigmay = value * (y - y0)**2 / sigma_y**3
         return np.vstack((dydamp, dydx0, dydy0, dydsigmax,
-                          dydsigmay, np.ones_like(value)))
+                          dydsigmay, np.ones_like(value))).T
         # the below works, but speed up only for above
         # new_params = np.insert(params, 5, 0)
         # return np.delete(cls.gauss2D_jac(new_params, xdata), 5, axis=0)
@@ -387,7 +389,7 @@ class Gauss2D(object):
         dydsigmax = value * (x - x0)**2 / sigma_x**3
         dydy0 = value * (y - y0) / sigma_x**2
         return np.vstack((dydamp, dydx0, dydy0, dydsigmax,
-                          np.ones_like(value)))
+                          np.ones_like(value))).T
         # new_params = np.insert(params, 4, 0)
         # new_params = np.insert(new_params, 4, params[3])
         # return np.delete(cls.gauss2D_jac(new_params, xdata), (4, 5), axis=0)
@@ -488,7 +490,7 @@ class Gauss2D(object):
             return abs(2 * np.pi * opt_params[0] * opt_params[3]**2)
 
     def optimize_params(self, guess_params=None, modeltype='norot',
-                        quiet=False, bounds=(-np.inf, np.inf),
+                        quiet=False, bounds=None,
                         checkparams=True, detrenddata=False, fittype='ls'):
         '''
         A function that will optimize the parameters for a 2D Gaussian model
@@ -546,9 +548,17 @@ class Gauss2D(object):
         # it returns the same output as leastsq's would, if False, as it is by
         # default it returns only popt and pcov.
 
-        # we can use the full output to determine wether the fit was successful
-        # or not. This will also allow for easier integration once MLE fitting
-        # is implemented
+        # we need to set the bounds if rho is available
+        if bounds is None:
+            # TODO: we can make better defaults, keep sigma_x/sigma_y positive,
+            # make sure amp is positive, etc...
+            # set to default for all params
+            bounds = (-np.inf, np.inf)
+            # need to rework least_squares to have it return full ...
+            if len(guess_params) == 7:
+                # make sure rho is restricted
+                ub = np.array((np.inf, ) * 5 + (1, np.inf))
+                bounds = (-1 * ub, ub)
         with warnings.catch_warnings():
             # we'll catch this error later and alert the user with a printout
             warnings.simplefilter("ignore", OptimizeWarning)
@@ -560,10 +570,9 @@ class Gauss2D(object):
                 # use standard ls
                 mp._wrap_func = _wrap_func_ls
             try:
-                popt, pcov, infodict, errmsg, ier = mp.curve_fit(
+                popt, pcov, infodict, errmsg, ier = curve_fit(
                     model_ravel, (xx, yy), data.ravel(), p0=guess_params,
-                    bounds=bounds, full_output=True, jac=self.model_jac,
-                    col_deriv=True)
+                    bounds=bounds, full_output=True, jac=self.model_jac)
             except RuntimeError as e:
                 # print(e)
                 # now we need to re-parse the error message to set all the
@@ -657,7 +666,7 @@ class Gauss2D(object):
         # it must be greater than 0 but it can't be too much larger than the
         # entire range of data values
         if not (0 < popt[0] < (data.max() - data.min()) * 5):
-            self.errmsg = "Amplitude unphysical"
+            self.errmsg = "Amplitude unphysical, amp = {:.3f}".format(popt[0])
             self.ier = 11
 
     def estimate_params(self, detrenddata=False):
@@ -860,3 +869,111 @@ class Gauss2D(object):
 
     def plot_optimized(self):
         self._subplot(self.opt_params)
+
+# we need to fix how `curve_fit` behaves with return_full
+from scipy.linalg import svd
+from scipy.optimize._lsq import least_squares
+from scipy.optimize._lsq.common import make_strictly_feasible
+from scipy.optimize._lsq.least_squares import prepare_bounds
+def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
+              check_finite=True, bounds=(-np.inf, np.inf), method=None,
+              jac=None, **kwargs):
+    if p0 is None:
+        # determine number of parameters by inspecting the function
+        from scipy._lib._util import getargspec_no_self as _getargspec
+        args, varargs, varkw, defaults = _getargspec(f)
+        if len(args) < 2:
+            raise ValueError("Unable to determine number of fit parameters.")
+        n = len(args) - 1
+    else:
+        p0 = np.atleast_1d(p0)
+        n = p0.size
+
+    lb, ub = prepare_bounds(bounds, n)
+    if p0 is None:
+        p0 = mp._initialize_feasible(lb, ub)
+
+    bounded_problem = np.any((lb > -np.inf) | (ub < np.inf))
+    if method is None:
+        if bounded_problem:
+            method = 'trf'
+        else:
+            method = 'lm'
+
+    if method == 'lm' and bounded_problem:
+        raise ValueError("Method 'lm' only works for unconstrained problems. "
+                         "Use 'trf' or 'dogbox' instead.")
+
+    # NaNs can not be handled
+    if check_finite:
+        ydata = np.asarray_chkfinite(ydata)
+    else:
+        ydata = np.asarray(ydata)
+
+    if isinstance(xdata, (list, tuple, np.ndarray)):
+        # `xdata` is passed straight to the user-defined `f`, so allow
+        # non-array_like `xdata`.
+        if check_finite:
+            xdata = np.asarray_chkfinite(xdata)
+        else:
+            xdata = np.asarray(xdata)
+
+    weights = 1.0 / np.asarray(sigma) if sigma is not None else None
+    func = mp._wrap_func(f, xdata, ydata, weights)
+    if callable(jac):
+        jac = mp._wrap_jac(jac, xdata, weights)
+    elif jac is None and method != 'lm':
+        jac = '2-point'
+
+    # Remove full_output from kwargs, otherwise we're passing it in twice.
+    return_full = kwargs.pop('full_output', False)
+    if method == 'lm':
+        res = mp.leastsq(func, p0, Dfun=jac, full_output=1, **kwargs)
+        popt, pcov, infodict, errmsg, ier = res
+        cost = np.sum(infodict['fvec'] ** 2)
+    else:
+        res = least_squares(func, p0, jac=jac, bounds=bounds, method=method,
+                            **kwargs)
+
+        cost = 2 * res.cost  # res.cost is half sum of squares!
+        popt = res.x
+
+        # Do Moore-Penrose inverse discarding zero singular values.
+        _, s, VT = svd(res.jac, full_matrices=False)
+        threshold = np.finfo(float).eps * max(res.jac.shape) * s[0]
+        s = s[s > threshold]
+        VT = VT[:s.size]
+        pcov = np.dot(VT.T / s**2, VT)
+        # infodict = dict(nfev=res.nfev, fvec=res.fun, fjac=res.jac, ipvt=None,
+        #                 qtf=None)
+        infodict = None
+        ier = res.status
+        errmsg = res.message
+    if ier not in [1, 2, 3, 4]:
+        raise RuntimeError("Optimal parameters not found: " + errmsg)
+
+    warn_cov = False
+    if pcov is None:
+        # indeterminate covariance
+        pcov = np.zeros((len(popt), len(popt)), dtype=float)
+        pcov.fill(np.inf)
+        warn_cov = True
+    elif not absolute_sigma:
+        if ydata.size > p0.size:
+            s_sq = cost / (ydata.size - p0.size)
+            pcov = pcov * s_sq
+        else:
+            pcov.fill(np.inf)
+            warn_cov = True
+
+    if warn_cov:
+        warnings.warn('Covariance of the parameters could not be estimated',
+                      category=OptimizeWarning)
+
+    if return_full:
+        return popt, pcov, infodict, errmsg, ier
+    else:
+        return popt, pcov
+
+if __name__ == '__main__':
+    main()
