@@ -69,7 +69,7 @@ class TestGauss2DBasics(unittest.TestCase):
         with warnings.catch_warnings():
             warnings.simplefilter("error", UserWarning)
             self.myg.optimize_params(modeltype='full')
- 
+
     def test_gen_model(self):
         """Test model"""
         params = np.array([1,
@@ -102,8 +102,8 @@ class TestGauss2DBasics(unittest.TestCase):
 
         coefs_full = [12, 20, 70, 20, 30, 0.5, 2]
 
-        assert_raises(ValueError, Gauss2D.gauss2D, (self.xx, yy), *coefs_full)
-        assert_raises(ValueError, Gauss2D.gauss2D, (xx, self.yy), *coefs_full)
+        assert_raises(RuntimeError, Gauss2D.gauss2D, (self.xx, yy), *coefs_full)
+        assert_raises(RuntimeError, Gauss2D.gauss2D, (xx, self.yy), *coefs_full)
 
     def test_gauss2D_sym(self):
         """Testing if the symmetrical case is a sub case of the full one"""
@@ -185,7 +185,6 @@ def _self_consistency_test_factory(guess, modeltype, fittype, snr):
             guess_params=guess_coefs, modeltype=modeltype, fittype=fittype
         )
         # do the actual test
-        print(self.test_str)
         assert_allclose(test_coefs, coefs, rtol=rtol)
     # add doc string
     _test.__doc__ = doc_str.format(guess, modeltype, fittype, snr)
@@ -198,40 +197,45 @@ def _self_consistency_test_factory(guess, modeltype, fittype, snr):
 
 
 class BuildTestsMeta(type):
+    """A meta class to build our tests for us"""
     def __new__(mcs, name, bases, dictionary):
+        # loop through the product of different inputs
         for guess, modeltype, fittype, snr in product((True, ),
                                                       ("sym", "norot", "full"),
                                                       ("ls", "mle"),
                                                       (0, 10)):
+            # build the actual test
             _test = _self_consistency_test_factory(guess, modeltype, fittype,
                                                    snr)
+            # update the test's __doc__ so that different
+            # classes will have unique names
+            _test.__doc__ = name + " " + _test.__doc__
             dictionary[_test.__name__] = _test
         # build class
         return type.__new__(mcs, name, bases, dictionary)
 
 
 class _TestGauss2DSelfConsistencyBase(unittest.TestCase, metaclass=BuildTestsMeta):
-    """test the self consistency of the model"""
+    """Base class for self consistency testing"""
 
     def _make_coefs(self):
-        """Fixed Coefs"""
+        """A function to be implemented by the child classes to generate coefs"""
         raise NotImplementedError
 
     def setUp(self):
-        """Set up our parameters"""
-        # choose size
+        """Set up testing fixtures, they'll be generated on the fly because
+        this is a small model"""
         amp, x0, y0, sigma_x, sigma_y, rho, offset = self._make_coefs()
-        # make stuff
-        gt_coefs_full = np.array((amp, x0, y0, sigma_x, sigma_y, rho,
-                                  offset))
-        gt_full = Gauss2D.model((self.xx, self.yy),
-                                *gt_coefs_full)
+        # make full
+        gt_coefs_full = np.array((amp, x0, y0, sigma_x, sigma_y, rho, offset))
+        gt_full = Gauss2D.model((self.xx, self.yy), *gt_coefs_full)
+        # make norot
         gt_coefs_norot = np.array((amp, x0, y0, sigma_x, sigma_y, offset))
-        gt_norot = Gauss2D.model((self.xx, self.yy),
-                                 *gt_coefs_norot)
+        gt_norot = Gauss2D.model((self.xx, self.yy), *gt_coefs_norot)
+        # make sym
         gt_coefs_sym = np.array((amp, x0, y0, sigma_x, offset))
-        gt_sym = Gauss2D.model((self.xx, self.yy),
-                               *gt_coefs_sym)
+        gt_sym = Gauss2D.model((self.xx, self.yy), *gt_coefs_sym)
+        # make internal dictionaries for tests to use.
         self.coefs = dict(sym=gt_coefs_sym, norot=gt_coefs_norot,
                           full=gt_coefs_full)
         self.data = dict(sym=gt_sym, norot=gt_norot, full=gt_full)
