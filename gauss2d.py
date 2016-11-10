@@ -26,7 +26,7 @@ from scipy.optimize import OptimizeWarning
 import scipy.optimize.minpack as mp
 from scipy.linalg import solve_triangular
 # need to detrend data before estimating parameters
-from .utils import detrend
+from .utils import detrend, _ensure_positive
 # Plotting
 from matplotlib import pyplot as plt
 
@@ -41,13 +41,14 @@ def _general_function_mle(params, xdata, ydata, function):
     # calculate the function
     f = function(xdata, *params)
     # calculate the MLE version of chi2
+    f, ydata = _ensure_positive(f), _ensure_positive(ydata * 1.0)
     chi2 = 2 * (f - ydata - ydata * np.log(f / ydata))
     if chi2.min() < 0:
         # jury rigged to enforce positivity
         # once scipy 0.17 is released this won't be necessary.
         # don't know what the above comment means ...
         warnings.warn("Chi^2 is less than 0")
-        return np.nan_to_num(np.inf) * np.ones_like(chi2)
+        return np.sqrt(np.nan_to_num(np.inf)) * np.ones_like(chi2)
     else:
         # return the sqrt because the np.leastsq will square and sum the result
         return np.sqrt(chi2)
@@ -243,13 +244,13 @@ class Gauss2D(object):
             raise ValueError
 
         if not abs(rho) < 1:
+            rho = np.sign(rho) * 0.9999
             warnings.warn(
                 'rho cannot be greater than 1 or less than -1. Here rho is {}.'
                 .format(rho) +
                 '\nCoercing to {}'
-                .format(np.sign(rho) * 0.99))
+                .format(rho))
 
-            rho = np.sign(rho) * 0.99
 
         z = (((x0 - mu0) / sigma0)**2 -
              2 * rho * (x0 - mu0) * (x1 - mu1) / (sigma0 * sigma1) +
@@ -565,6 +566,8 @@ class Gauss2D(object):
 
             if fittype.lower() == 'mle':
                 # monkey patch in mle functions
+                if not (data >= 0).all():
+                    raise ValueError("Data is not non-negative, please try fittype='ls' instead")
                 mp._wrap_func = _wrap_func_mle
             else:
                 # use standard ls
@@ -666,7 +669,9 @@ class Gauss2D(object):
         # it must be greater than 0 but it can't be too much larger than the
         # entire range of data values
         if not (0 < popt[0] < (data.max() - data.min()) * 5):
-            self.errmsg = "Amplitude unphysical, amp = {:.3f}".format(popt[0])
+            self.errmsg = """Amplitude unphysical, amp = {:.3f},
+                          data range = {:.3f}
+                          """.format(popt[0], data.max() - data.min())
             self.ier = 11
 
     def estimate_params(self, detrenddata=False):

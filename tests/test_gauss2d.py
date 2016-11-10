@@ -64,6 +64,12 @@ class TestGauss2DBasics(unittest.TestCase):
                                   1.0001033]),
                         1e-5, 1e-8)
 
+    def test_full_fit(self):
+        """Make sure that when optimizing no warning is raised"""
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", UserWarning)
+            self.myg.optimize_params(modeltype='full')
+ 
     def test_gen_model(self):
         """Test model"""
         params = np.array([1,
@@ -128,8 +134,7 @@ class TestGauss2DBasics(unittest.TestCase):
         funcs = (Gauss2D.gauss2D, Gauss2D.gauss2D_norot, Gauss2D.gauss2D_sym)
         coefs = ([12, 20, 70, 20, 30, 0.5, 2],
                  [12, 20, 70, 20, 30, 2],
-                 [12, 20, 70, 20, 2],
-                 [12, 20, 70, 20, 30, 1.5, 2])
+                 [12, 20, 70, 20, 2])
 
         for func, coef in zip(funcs, coefs):
             data = func((self.xx, self.yy), *coef)
@@ -155,16 +160,21 @@ def _self_consistency_test_factory(guess, modeltype, fittype, snr):
         data = self.data[modeltype]
         # add noise
         if snr:
-            amp = coefs[0]
-            noise_data = (amp / snr) * np.random.randn(*data.shape)
-            # this is a heuristic and should be replaced with a better
-            # reasone parameter
-            rtol = 1 / snr
+            if fittype == "ls":
+                amp = coefs[0]
+                noise_data = (amp / snr) * np.random.randn(*data.shape)
+                noisy_data = data + noise_data
+                # this is a heuristic and should be replaced with a better
+                # reasone parameter
+                rtol = 1 / snr
+            elif fittype == "mle":
+                noisy_data = np.random.poisson(data)
+                rtol = 1 / coefs[0]
         else:
-            noise_data = 0
+            noisy_data = data
             rtol = 1e-7
         # build object to test
-        test_g = Gauss2D(data + noise_data)
+        test_g = Gauss2D(noisy_data)
         # speficify guesses
         if not guess:
             guess_coefs = None
@@ -192,7 +202,7 @@ class BuildTestsMeta(type):
         for guess, modeltype, fittype, snr in product((True, ),
                                                       ("sym", "norot", "full"),
                                                       ("ls", "mle"),
-                                                      (0, )):
+                                                      (0, 10)):
             _test = _self_consistency_test_factory(guess, modeltype, fittype,
                                                    snr)
             dictionary[_test.__name__] = _test
@@ -230,6 +240,7 @@ class _TestGauss2DSelfConsistencyBase(unittest.TestCase, metaclass=BuildTestsMet
 class TestGauss2DSelfConsistencyFixed(_TestGauss2DSelfConsistencyBase):
     """Test self consistency with fixed numbers"""
     test_str = "Fixed test"
+
     def _make_coefs(self):
         """Fixed Coefs"""
         ny, nx = 16, 16
@@ -249,16 +260,18 @@ class TestGauss2DSelfConsistencyFixed(_TestGauss2DSelfConsistencyBase):
 
 
 class TestGauss2DSelfConsistencyRand(_TestGauss2DSelfConsistencyBase):
+    """Test self consistency with random numbers"""
     test_str = "Random test"
+
     def _make_coefs(self):
         """"""
         ny, nx = np.random.randint(10, 100, 2)
         # make grid
         self.yy, self.xx = np.indices((ny, nx))
         # choose center
-        y0, x0 = np.random.random(2) * (ny, nx)
+        y0, x0 = (np.random.random(2) * 0.9 + 0.10) * (ny, nx)
         # choose sigmas
-        sigma_y, sigma_x = 0.1 * np.random.random(2) * (ny, nx)
+        sigma_y, sigma_x = (0.1 * np.random.random(2) + 0.1) * (ny, nx)
         # choose amp
         amp = (np.random.random() + 1.0) * 10
         # choose rho

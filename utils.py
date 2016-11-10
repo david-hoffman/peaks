@@ -66,6 +66,20 @@ def detrend(data, degree=1):
     return data_nb, background
 
 
+def _ensure_positive(data):
+    """Make sure data is positive and has no zeros
+
+    For numerical stability
+
+    If we realize that mutating data is not a problem
+    and that changing in place could lead to signifcant
+    speed ups we can lose the data.copy() line"""
+    # make a copy of the data
+    data = data.copy()
+    data[data <= 0] = np.finfo(data.dtype).resolution
+    return data
+
+
 def nmoment(x, counts, c, n):
     """A helper function to calculate moments of histograms"""
     return np.sum((x - c)**n * counts) / np.sum(counts)
