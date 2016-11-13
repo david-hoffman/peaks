@@ -146,6 +146,36 @@ class TestGauss2DBasics(unittest.TestCase):
         assert_raises(ValueError, Gauss2D.model, *np.arange(10))
 
 
+class TestGauss2DArea(unittest.TestCase):
+    """Test that area calculations are accurate"""
+
+    def setUp(self):
+        """Basic set up"""
+        data = np.zeros((2001, 2001))
+        self.gauss = Gauss2D(data)
+
+    def test_sym(self):
+        """Area test for the symmetric case"""
+        self.gauss._popt = np.array((1, 1000, 1000, 100, 0))
+        self._test()
+
+    def test_norot(self):
+        """Area test for the norotation case"""
+        self.gauss._popt = np.array((1, 1000, 1000, 100, 75, 0))
+        self._test()
+
+    def test_full(self):
+        """Area test for the full case"""
+        self.gauss._popt = np.array((1, 1000, 1000, 100, 80, 0.5, 0))
+        self._test()
+
+    def _test(self):
+        area = self.gauss.area()
+        model = self.gauss.fit_model
+        numeric_area = model.sum()
+        assert_allclose(area, numeric_area)
+
+
 def _self_consistency_test_factory(guess, modeltype, fittype, snr):
     """Build the self-consistency tests so I don't have to"""
     # set up doc string for returned function
@@ -283,5 +313,3 @@ class TestGauss2DSelfConsistencyRand(_TestGauss2DSelfConsistencyBase):
         # choose offset
         offset = np.random.random() * 10
         return amp, x0, y0, sigma_x, sigma_y, rho, offset
-
-

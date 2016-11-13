@@ -417,24 +417,43 @@ class PeakFinder(object):
             return self.blobs
 
     def remove_edge_blobs(self, distance):
-
+        """Remove blobs that are less than `distance` away from the image
+        edge"""
+        # find the maximum limits of the data
         ymax, xmax = self._data.shape
-
+        # build a new array filtering out any blobs that are two close to
+        # the edge of the image
         my_blobs = np.array([
             blob for blob in self.blobs
             if ((distance < blob[0] < ymax - distance) and
                 (distance < blob[1] < xmax - distance))
         ])
-
+        # resort the blobs, largest to smallest
         my_blobs = my_blobs[my_blobs[:, 3].argsort()]
-
+        # set the internals and return them
         self._blobs = my_blobs
         return my_blobs
 
     def plot_blobs(self, diameter=None, size=6, **kwargs):
+        """Plot the found blobs
 
+        Parameters
+        ----------
+        diameter : numeric
+            diameter of the circles to draw, if omitted
+            the diameter will be 4 times the estimated
+            sigma
+        size : int
+            The size of the final plot
+        **kwargs : key word arguments
+            Any extra keyword arguments are passed along to plt.matshow
+
+        Returns
+        -------
+        fig, axs : plt.figure, ndarray of plt.axes
+        """
         if self.blobs is None:
-            raise UserWarning('No blobs have been found')
+            raise RuntimeError('No blobs have been found')
 
         fig, ax = plt.subplots(1, 1, figsize=(size, size))
 
@@ -500,7 +519,7 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6,
     Examples
     --------
     >>> from skimage import data, feature
-    >>> better_blob_dog(data.coins(), threshold=.5, max_sigma=40)
+    >>> better_blob_dog(data.coins(), threshold=.8, max_sigma=40)
     array([[  45.      ,  336.      ,   16.777216],
            [  52.      ,  155.      ,   16.777216],
            [  52.      ,  216.      ,   16.777216],

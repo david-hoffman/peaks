@@ -968,5 +968,7 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
     else:
         return popt, pcov
 
+
 if __name__ == '__main__':
-    main()
+    # TODO: Make data, add noise, estimate, fit. Plot all 4 + residuals
+    raise NotImplementedError
