@@ -84,12 +84,12 @@ class TestGauss2DBasics(unittest.TestCase):
 
     def test_rho(self):
         """Test that rho is rejected if outside acceptable range"""
-        coefs_full = [12, 20, 70, 20, 30, -1, 2]
-        assert_warns(UserWarning, Gauss2D.gauss2D, (self.xx, self.yy),
+        coefs_full = (12, 20, 70, 20, 30, -1, 2)
+        assert_warns(UserWarning, Gauss2D.model, (self.xx, self.yy),
                      *coefs_full)
 
-        coefs_full = [12, 20, 70, 20, 30, 1, 2]
-        assert_warns(UserWarning, Gauss2D.gauss2D, (self.xx, self.yy),
+        coefs_full = (12, 20, 70, 20, 30, 1, 2)
+        assert_warns(UserWarning, Gauss2D.model, (self.xx, self.yy),
                      *coefs_full)
 
     def test_unequal_range(self):
@@ -173,7 +173,10 @@ class TestGauss2DArea(unittest.TestCase):
         area = self.gauss.area()
         model = self.gauss.fit_model
         numeric_area = model.sum()
-        assert_allclose(area, numeric_area)
+        assert_allclose(area, numeric_area,
+                        err_msg="Failed with GT params")
+        assert_allclose(Gauss2D(model).area(guess_params=self.gauss._popt), numeric_area,
+                        err_msg="Failed when optimizing params")
 
 
 def _self_consistency_test_factory(guess, modeltype, fittype, snr):

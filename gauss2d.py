@@ -175,20 +175,10 @@ class Gauss2D(object):
         else:
             return True
 
+    @property
     def guess_params():
-        """Guess parameters for fitting."""
-
-        def fget(self):
-            return self._guess_params
-
-        def fset(self, value):
-            # should have error checking on parameters here
-            self._guess_params = value
-
-        def fdel(self):
-            self._guess_params = None
-        return locals()
-    guess_params = property(**guess_params())
+        """Guessed parameters"""
+        return self._guess_params.copy()
 
     #############################
     # STATIC METHOD DEFINITIONS #
