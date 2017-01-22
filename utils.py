@@ -76,7 +76,7 @@ def _ensure_positive(data):
     speed ups we can lose the data.copy() line"""
     # make a copy of the data
     data = data.copy()
-    data[data <= 0] = np.finfo(data.dtype).resolution
+    data[data <= 0] = np.finfo(data.dtype).eps
     return data
 
 
