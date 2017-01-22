@@ -1,19 +1,24 @@
-# Copyright David P. Hoffman
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# peakfinder.py
+"""
+Class for finding blobs. Encapsulates a difference of gaussians (DoG)
+algorithm and exposes methods to easilyt interact with the data and
+results.
 
-'''
-A Class to find peaks and fit them
-'''
+Copyright (c) 2016, David Hoffman
+"""
 
 # Get our numerical stuff
 import numpy as np
+# need math log too, for arbitrary base
+from math import log
 # need pandas for better data containers
 import pandas as pd
 # we need a few extra features from matplot lib
 import matplotlib.pyplot as plt
 # We want to be able to warn the user about potential problems
 import warnings
-# need log function
-from math import log
 # the difference of Gaussians algorithm
 from skimage.draw import circle
 from skimage.util import img_as_float
@@ -64,7 +69,7 @@ class PeakFinder(object):
 
         self._data = data
         # make an initial guess of the threshold
-        self._thresh = np.std(data)
+        self.estimate_background()
         self._blobs = None
         # estimated width of the blobs
         self._blob_sigma = sigma
@@ -731,14 +736,14 @@ class SpectralPeakFinder(object):
         # presmooth might make sense here
         if presmooth:
             FoM = gaussian_filter(self.FoM, presmooth)
-            width2 = int(2*presmooth*np.sqrt(2*np.log(2)))
+            width2 = int(2 * presmooth * np.sqrt(2 * np.log(2)))
         elif presmooth is None:
-            FoM = gaussian_filter(self.FoM, width*(np.sqrt(2*np.log(2))))
-            width2 = int(2*width*(2*np.log(2)))
+            FoM = gaussian_filter(self.FoM, width * (np.sqrt(2 * np.log(2))))
+            width2 = int(2 * width * (2 * np.log(2)))
         else:
             FoM = self.FoM
             width2 = width
-        peaks = argrelmax(FoM*(FoM > cutoff), order=width)[0]
+        peaks = argrelmax(FoM * (FoM > cutoff), order=width)[0]
         # here we look to see the *relative* intensity of the peak.
         # set up our container
         good_peaks = []
