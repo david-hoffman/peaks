@@ -1,3 +1,12 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# test_gauss2d.py
+"""
+Test suite for `Gauss2D` class
+
+Copyright (c) 2016, David Hoffman
+"""
+
 from nose.tools import *
 import warnings
 from skimage.external import tifffile as tif
