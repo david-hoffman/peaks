@@ -57,7 +57,7 @@ class PeakFinder(object):
             the estimated width of the peaks
     '''
 
-    def __init__(self, data, sigma=1.0):
+    def __init__(self, data, sigma=1.0, method="median"):
         # some error checking
         if not isinstance(data, np.ndarray):
             raise TypeError('data is not a numpy array')
@@ -69,7 +69,7 @@ class PeakFinder(object):
 
         self._data = data
         # make an initial guess of the threshold
-        self.estimate_background()
+        self.estimate_background(method)
         self._blobs = None
         # estimated width of the blobs
         self._blob_sigma = sigma
@@ -157,7 +157,14 @@ class PeakFinder(object):
         if method == "median":
             self.thresh = np.median(self.data)
         elif method == "mode":
-            self.thresh = np.bincount(self.data.ravel()).argmax()
+            if np.issubdtype(self.data.dtype, np.inexact):
+                hist, bins = np.histogram(self.data.ravel(), "auto")
+                maxval = hist.argmax()
+                self.thresh = (bins[maxval] + bins[maxval + 1]) / 2
+            elif np.issubdtype(self.data.dtype, np.unsignedinteger):
+                self.thresh = np.bincount(self.data.ravel()).argmax()
+            else:
+                raise TypeError("Invalid type for method 'mode' {}".format(self.data.dtype))
         else:
             raise ValueError("Invalid option for `method`: {}".format(method))
 
