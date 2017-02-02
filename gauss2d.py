@@ -786,7 +786,8 @@ class Gauss2D(object):
 
         # pull the variances of the parameters from the covariance matrix
         # take the sqrt to get the errors
-        params = np.sqrt(np.diag(self.pcov))
+        with np.errstate(invalid="ignore"):
+            params = np.sqrt(np.diag(self.pcov))
 
         num_params = len(params)
 
