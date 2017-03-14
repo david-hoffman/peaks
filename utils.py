@@ -130,6 +130,14 @@ def sine(xdata, amp, freq, phase, offset):
     return amp * np.sin(2 * np.pi * freq * xdata + phase) + offset
 
 
+def sine2(xdata, amp, amp2, freq, phase, offset):
+    """Utility function to fit nonlinearly"""
+    result = amp * np.cos(4 * np.pi * (freq * xdata + phase))
+    result += amp2 * np.cos(2 * np.pi * (freq * xdata + phase))
+    result += offset
+    return result
+
+
 def cosine(xdata, amp, freq, phase, offset):
     """Utility function to fit nonlinearly"""
     phase += np.pi / 2
