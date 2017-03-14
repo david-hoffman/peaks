@@ -15,10 +15,17 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import ColorConverter
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
-from .utils import gauss_fit, sine, sine_jac, scatterplot
+from .utils import gauss_fit, sine, sine_jac, scatterplot, sine2
 from scipy.fftpack import fft
 from dphutils import slice_maker
 from dphplotting import make_grid, clean_grid
+try:
+    from pyfftw.interfaces.numpy_fft import rfftn, rfftfreq
+    import pyfftw
+    # Turn on the cache for optimum performance
+    pyfftw.interfaces.cache.enable()
+except ImportError:
+    from numpy.fft import rfftn, rfftfreq
 
 # TODO
 # Need to move all the fitting stuff into its own class and abstract as much
@@ -289,13 +296,22 @@ class SIMStackAnalyzer(StackAnalyzer):
 
         return self.fits
 
-    def calc_sim_params(self, nproc=0, modtype='nl', **kwargs):
+    def calc_sim_params(self, nproc=0, modtype='ls', **kwargs):
         """Calculate all SIM parameters for found peaks"""
         # pass in the relavent parameters to the superclass
+        if modtype == 'ls':
+            fit_func = calc_mod_ls
+        elif modtype == "ls_3D":
+            fit_func = calc_mod3D_ls
+        elif modtype == "simple":
+            fit_func = calc_mod
+        else:
+            raise ValueError("Unrecognized modulation fitting type " + modtype)
         params = super()._calc_params(nproc=nproc, par_func=_calc_sim_param,
                                       periods=self.periods,
                                       nphases=self.nphases,
-                                      modtype=modtype, **kwargs)
+                                      modtype=modtype,
+                                      fit_func=fit_func, **kwargs)
         self.sim_params = pd.DataFrame(list(itt.chain.from_iterable(params)))
 
     def plot_sim_params(self, orientations=None, **kwargs):
@@ -386,7 +402,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         # pull internal fits for later use
         fits = self.fits
         # make a grid axes
-        fig, axs = make_grid(num)
+        fig, axs = make_grid(len(to_plot))
         # loop through chosen ones
         for (loc, params), ax in zip(to_plot.iterrows(), axs.ravel()):
             # pull the amplitudes and plot
@@ -394,12 +410,16 @@ class SIMStackAnalyzer(StackAnalyzer):
             ax.plot(amp, "o")
             # calculate the fit function and display
             x = np.linspace(0, len(amp))
-            sine_fit = sine(x, params.amp, params.freq, params.phase,
-                            params.offset)
+            if "samp2" in params.keys():
+                sine_fit = sine2(x, params.samp, params.samp2, params.freq,
+                                 params.phase, params.soffset)
+            else:
+                sine_fit = sine(x, params.samp, params.freq, params.phase,
+                                params.soffset)
             ax.plot(x, sine_fit)
             # place a title with both SNRs
-            ax.set_title("gSNR = {:.0f}, sSNR = {:.0f}".format(
-                params.SNR, params.sin_SNR))
+            ax.set_title("gSNR={:.0f}, sSNR={:.0f}, loc={}".format(
+                params.SNR, params.sin_SNR, loc // self.norients))
         # make the layout tight and return
         fig.tight_layout()
         fig, axs = clean_grid(fig, axs)
@@ -760,7 +780,7 @@ def _calc_psf_param(fit, subrange=slice(None, None, None), **kwargs):
     return result
 
 
-def calc_mod(data):
+def calc_mod(data, *args):
     """
     A utility function to calculate modulation depth
 
@@ -783,6 +803,10 @@ def calc_mod(data):
 
     return {"modulation": mod}
 
+
+## modamp is defined as the maximum of the signal divided by the max - min
+## i.e. mod = (max - min) / max when min is 0 we have perfect modulation
+## depth (1) when min = max we have the worst modulation depth (0)
 
 def calc_mod_ls(data, periods, nphases):
     """
@@ -810,7 +834,6 @@ def calc_mod_ls(data, periods, nphases):
 
     if len(data_fixed) > 4:
         # we can't fit data with less than 4 points
-
         # make x-wave
         x = np.arange(nphases)[finite_args]
 
@@ -822,7 +845,7 @@ def calc_mod_ls(data, periods, nphases):
         # frequency is such that `nphases` covers `periods`
         g_f = periods / nphases
         # guess of phase is from first data point (maybe mean of all?)
-        g_p = np.arcsin((data_fixed[0] - g_o) / g_a) - 2 * np.pi * g_f * x[0]
+        g_p = np.arccos((data_fixed[0] - g_o) / g_a) / np.pi - g_f * x[0]
         # make guess sequence
         pguess = (g_a, g_f, g_p, g_o)
 
@@ -846,21 +869,88 @@ def calc_mod_ls(data, periods, nphases):
             if opt_o - opt_a > 0:
                 mod = 2 * opt_a / (opt_o + opt_a)
                 res = data_fixed - sine(x, *popt)
-                SNR = (opt_o + opt_a) / res.std()
-    return {'modulation': mod, 'amp': opt_a, 'freq': opt_f,
-            'phase': opt_p, 'offset': opt_o, "sin_SNR": SNR}
+                SNR = (opt_a) / res.std()
+    return {'modulation': mod, 'samp': opt_a, 'freq': opt_f,
+            'phase': opt_p, 'soffset': opt_o, "sin_SNR": SNR}
 
 
-def _calc_sim_param(fit, *, periods, nphases, modtype, **kwargs):
+def _estimate_sine_params(data, periods, nphases):
+    """utility to estimate sine params"""
+    pnts = np.arange(3) * periods
+    fft_data = rfftn(data)
+    g_o, g_a, g_a2 = abs(fft_data[pnts]) / len(data)
+    if g_a > g_a2:
+        g_p = np.angle(fft_data[1]) / periods
+    else:
+        g_p = np.angle(fft_data[2]) / (2 * periods)
+    g_f = 1 / nphases
+    return g_a, g_a2, g_f, g_p, g_o
+
+
+def calc_mod3D_ls(data, periods, nphases):
+    """
+    Need to change this so that it:
+    - first tries to fit only the amplitude and phase
+        - if that doesn't work, estimate amp and only fit phase
+    - then do full fit
+
+    Also, add a Jacobian for the curve_fit
+    """
+    # TODO: this part should be refactored into a function called
+    # sine_fit, it should return a list of nan if it fails
+    mod = opt_a = opt_a2 = opt_f = opt_p = opt_o = res = SNR = np.nan
+
+    # only deal with finite data
+    # NOTE: could use masked wave here.
+    finite_args = np.isfinite(data)
+    data_fixed = data[finite_args]
+
+    if len(data_fixed) > 4:
+        # we can't fit data with less than 4 points
+
+        # make x-wave
+        x = np.arange(nphases)[finite_args]
+
+        # make guesses
+        pguess = _estimate_sine_params(np.nan_to_num(data), periods, nphases)
+
+        try:
+            # The jacobian actually slows down the fitting my guess is there
+            # aren't generally enough points to make it worthwhile
+            popt, pcov = curve_fit(sine2, x, data_fixed, p0=pguess)
+            # popt, pcov = curve_fit(sine, x, data_fixed, p0=pguess,
+            #                        Dfun=sine_jac, col_deriv=True)
+        except RuntimeError as e:
+            pass
+        except TypeError as e:
+            print(e)
+            print(data_fixed)
+        else:
+            opt_a, opt_a2, opt_f, opt_p, opt_o = popt
+            # if np.sign(opt_a) != np.sign(opt_a2):
+            #     # print("a1 = {}, a2 = {}".format(opt_a, opt_a2))
+            #     mod = opt_a = opt_a2 = opt_f = opt_p = opt_o = res = SNR = np.nan
+            # if opt_a < 0:
+            #     opt_a = np.abs(opt_a)
+            #     opt_a2 = np.abs(opt_a2)
+            #     opt_p += np.pi
+            # # if any part of the fit is negative, mark as failure
+            # if (opt_a + opt_a2) * 2 > opt_o:
+            # modulation for a + b * cos(x) + c * cos(2*x) is more complicated ...
+            mod = (opt_a + 4 * opt_a2) ** 2 / (opt_o + opt_a + opt_a2) / (8 * opt_a2)
+            res = data_fixed - sine2(x, *popt)
+            SNR = (opt_a + opt_a2) / res.std()
+    return {'modulation': mod, 'samp': opt_a, 'samp2': opt_a2, 'freq': opt_f,
+            'phase': opt_p, 'soffset': opt_o, "sin_SNR": SNR}
+
+
+def _calc_sim_param(fit, *, periods, nphases, modtype, fit_func, **kwargs):
     """Function to calculate the SIM parameters for a found peak
     i.e. modulation depth"""
     results = []
     for i, trace in fit.groupby(level='orientation'):
         # pull amplitude values
-        if modtype == 'nl':
-            params = calc_mod_ls(trace.amp.values, periods, nphases)
-        else:
-            params = calc_mod(trace.amp.values)
+        params = fit_func(trace.amp.values, periods, nphases)
 
         # take mean and pass to dict
         result = trace.mean().to_dict()
