@@ -199,11 +199,11 @@ def scatterplot(z, y, x, ax=None, fig=None, cmap="plasma", **kwargs):
 
     # if there's more than 100 beads to fit then don't make spots
     if len(x) > 100:
-        mark = '.'
+        scatter_kwargs = dict(marker='.')
     else:
-        mark = 'o'
+        scatter_kwargs = dict(marker='o', edgecolors="b", linewidths=1)
 
-    ax.scatter(x, y, c='c', zorder=2, marker=mark)
+    ax.scatter(x, y, c='c', zorder=2, **scatter_kwargs)
     ax.invert_yaxis()
     the_divider = make_axes_locatable(ax)
     color_axis = the_divider.append_axes("right", size="5%", pad=0.1)

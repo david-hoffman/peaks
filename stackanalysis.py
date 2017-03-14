@@ -177,7 +177,7 @@ class StackAnalyzer(object):
         xar = np.array(x).ravel()
         yar = np.array(y).ravel()
         # determine good histogram bin size
-        nbins = int(np.sqrt(xar.size))
+        nbins = "auto"
         # plot hists
         ax1.hist(xar, color=ColorConverter().to_rgba("b", 0.5), normed=True,
                  label="$x$", bins=nbins, histtype="stepfilled", range=(-1, 1))
@@ -349,7 +349,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         if len(sim_params):
             try:
                 axs = sim_params.hist(
-                    bins=int(np.sqrt(len(sim_params))), column='modulation',
+                    bins="auto", column='modulation',
                     by='orientation', figsize=(4 * self.norients, 4),
                     layout=(1, self.norients), histtype='stepfilled',
                     normed=True, sharex=True, sharey=True
@@ -804,9 +804,9 @@ def calc_mod(data, *args):
     return {"modulation": mod}
 
 
-## modamp is defined as the maximum of the signal divided by the max - min
-## i.e. mod = (max - min) / max when min is 0 we have perfect modulation
-## depth (1) when min = max we have the worst modulation depth (0)
+# modamp is defined as the maximum of the signal divided by the max - min
+# i.e. mod = (max - min) / max when min is 0 we have perfect modulation
+# depth (1) when min = max we have the worst modulation depth (0)
 
 def calc_mod_ls(data, periods, nphases):
     """
