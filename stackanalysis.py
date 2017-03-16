@@ -15,7 +15,7 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import ColorConverter
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
-from .utils import gauss_fit, sine, sine_jac, scatterplot, sine2
+from .utils import gauss_fit, sine, sine_jac, scatterplot, sine2, sine_fit
 from scipy.fftpack import fft
 from dphutils import slice_maker
 from dphplotting import make_grid, clean_grid
@@ -817,61 +817,24 @@ def calc_mod_ls(data, periods, nphases):
 
     Also, add a Jacobian for the curve_fit
     """
-    # TODO: this part should be refactored into a function called
-    # sine_fit, it should return a list of nan if it fails
-    mod = np.nan
-    opt_a = np.nan
-    opt_f = np.nan
-    opt_p = np.nan
-    opt_o = np.nan
-    res = np.nan
-    SNR = np.nan
-
-    # only deal with finite data
-    # NOTE: could use masked wave here.
-    finite_args = np.isfinite(data)
-    data_fixed = data[finite_args]
-
-    if len(data_fixed) > 4:
-        # we can't fit data with less than 4 points
-        # make x-wave
-        x = np.arange(nphases)[finite_args]
-
-        # make guesses
-        # amp of sine wave is sqrt(2) the standard deviation
-        g_a = np.sqrt(2) * (data_fixed.std())
-        # offset is mean
-        g_o = data_fixed.mean()
-        # frequency is such that `nphases` covers `periods`
-        g_f = periods / nphases
-        # guess of phase is from first data point (maybe mean of all?)
-        g_p = np.arccos((data_fixed[0] - g_o) / g_a) / np.pi - g_f * x[0]
-        # make guess sequence
-        pguess = (g_a, g_f, g_p, g_o)
-
-        try:
-            # The jacobian actually slows down the fitting my guess is there
-            # aren't generally enough points to make it worthwhile
-            popt, pcov = curve_fit(sine, x, data_fixed, p0=pguess)
-            # popt, pcov = curve_fit(sine, x, data_fixed, p0=pguess,
-            #                        Dfun=sine_jac, col_deriv=True)
-        except RuntimeError as e:
-            pass
-        except TypeError as e:
-            print(e)
-            print(data_fixed)
-        else:
-            opt_a, opt_f, opt_p, opt_o = popt
-            if opt_a < 0:
-                opt_a = np.abs(opt_a)
-                opt_p += np.pi
-            # if any part of the fit is negative, mark as failure
-            if opt_o - opt_a > 0:
-                mod = 2 * opt_a / (opt_o + opt_a)
-                res = data_fixed - sine(x, *popt)
-                SNR = (opt_a) / res.std()
-    return {'modulation': mod, 'samp': opt_a, 'freq': opt_f,
-            'phase': opt_p, 'soffset': opt_o, "sin_SNR": SNR}
+    try:
+        # Fit the sine wave
+        popt, pcov = sine_fit(data, periods)
+    except (RuntimeError, TypeError) as e:
+        print(e)
+    else:
+        opt_a, opt_f, opt_p, opt_o = popt
+        if opt_a < 0:
+            opt_a = np.abs(opt_a)
+            opt_p += np.pi
+        # if any part of the fit is negative, mark as failure
+        mod = 2 * opt_a / (opt_o + opt_a)
+        if 1 >= mod >= 0:
+            res = data - sine(np.arange(len(data)), *popt)
+            SNR = (opt_a) / np.nanstd(res)
+            return {'modulation': mod, 'samp': opt_a, 'freq': opt_f,
+                    'phase': opt_p, 'soffset': opt_o, "sin_SNR": SNR}
+    # return None
 
 
 def _estimate_sine_params(data, periods, nphases):
@@ -896,10 +859,6 @@ def calc_mod3D_ls(data, periods, nphases):
 
     Also, add a Jacobian for the curve_fit
     """
-    # TODO: this part should be refactored into a function called
-    # sine_fit, it should return a list of nan if it fails
-    mod = opt_a = opt_a2 = opt_f = opt_p = opt_o = res = SNR = np.nan
-
     # only deal with finite data
     # NOTE: could use masked wave here.
     finite_args = np.isfinite(data)
@@ -940,8 +899,8 @@ def calc_mod3D_ls(data, periods, nphases):
             mod = (opt_a + 4 * opt_a2) ** 2 / (opt_o + opt_a + opt_a2) / (8 * opt_a2)
             res = data_fixed - sine2(x, *popt)
             SNR = (opt_a + opt_a2) / res.std()
-    return {'modulation': mod, 'samp': opt_a, 'samp2': opt_a2, 'freq': opt_f,
-            'phase': opt_p, 'soffset': opt_o, "sin_SNR": SNR}
+            return {'modulation': mod, 'samp': opt_a, 'samp2': opt_a2, 'freq': opt_f,
+                    'phase': opt_p, 'soffset': opt_o, "sin_SNR": SNR}
 
 
 def _calc_sim_param(fit, *, periods, nphases, modtype, fit_func, **kwargs):
@@ -951,16 +910,16 @@ def _calc_sim_param(fit, *, periods, nphases, modtype, fit_func, **kwargs):
     for i, trace in fit.groupby(level='orientation'):
         # pull amplitude values
         params = fit_func(trace.amp.values, periods, nphases)
-
-        # take mean and pass to dict
-        result = trace.mean().to_dict()
-        # add orientation and modulation
-        result['orientation'] = i
-        # copy params over to temp for output
-        result.update(params)
-        # calc the SNR using the noise from the fit
-        result['SNR'] = np.median((trace.amp / trace.noise))
-        results.append(result)
+        if params:
+            # take mean and pass to dict
+            result = trace.mean().to_dict()
+            # add orientation and modulation
+            result['orientation'] = i
+            # copy params over to temp for output
+            result.update(params)
+            # calc the SNR using the noise from the fit
+            result['SNR'] = np.median((trace.amp / trace.noise))
+            results.append(result)
     # need to flatten the list, next function will try to make a DataFrame
     return results
 

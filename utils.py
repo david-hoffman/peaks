@@ -130,6 +130,24 @@ def sine(xdata, amp, freq, phase, offset):
     return amp * np.sin(2 * np.pi * freq * xdata + phase) + offset
 
 
+def _estimate_sine_params(data, periods):
+    """utility to estimate sine params"""
+    # make guesses
+    # amp of sine wave is sqrt(2) the standard deviation
+    g_a = np.sqrt(2) * np.nanstd(data)
+    # offset is mean
+    g_o = np.nanmean(data)
+    # frequency is such that `nphases` covers `periods`
+    g_f = periods / len(data)
+    # guess of phase is from first data point (maybe mean of all?)
+    with np.errstate(invalid="ignore"):
+        # this could possibly take into account all the data
+        # np.arcsin((data - g_o) / g_a) / 2 / np.pi - g_f * x
+        g_p = np.arcsin((data[0] - g_o) / g_a) / 2 / np.pi
+    # make guess sequence
+    return np.nan_to_num((g_a, g_f, g_p, g_o))
+
+
 def sine_fit(data, periods):
     """Utility function that fits data to the sine function
 
@@ -155,26 +173,15 @@ def sine_fit(data, periods):
     """
     # only deal with finite data
     # NOTE: could use masked wave here.
-    finite_args = np.isfinite(data)
-    data_fixed = data[finite_args]
+    finite_pnts = np.isfinite(data)
+    data_fixed = data[finite_pnts]
     # we need at least 4 data points to fit
     if len(data_fixed) > 4:
         # we can't fit data with less than 4 points
         # make x-wave
-        x = np.arange(len(data))[finite_args]
-
+        x = np.arange(len(data))[finite_pnts]
         # make guesses
-        # amp of sine wave is sqrt(2) the standard deviation
-        g_a = np.sqrt(2) * (data_fixed.std())
-        # offset is mean
-        g_o = data_fixed.mean()
-        # frequency is such that `nphases` covers `periods`
-        g_f = periods / len(data)
-        # guess of phase is from first data point (maybe mean of all?)
-        g_p = np.arcsin((data_fixed[0] - g_o) / g_a) / 2 / np.pi - g_f * x[0]
-        # make guess sequence
-        pguess = (g_a, g_f, g_p, g_o)
-
+        pguess = _estimate_sine_params(data, periods)
         # The jacobian actually slows down the fitting my guess is there
         # aren't generally enough points to make it worthwhile
         return curve_fit(sine, x, data_fixed, p0=pguess)
@@ -192,6 +199,20 @@ def sine2(xdata, amp, amp2, freq, phase, offset):
     result += amp2 * np.cos(2 * np.pi * (freq * xdata + phase))
     result += offset
     return result
+
+
+def _estimate_sine2_params(data, periods):
+    """utility to estimate sine params"""
+    data = np.nan_to_num(data)
+    pnts = np.arange(3) * periods
+    fft_data = rfftn(data)
+    g_o, g_a, g_a2 = abs(fft_data[pnts]) / len(data)
+    if g_a > g_a2:
+        g_p = np.angle(fft_data[1]) / periods
+    else:
+        g_p = np.angle(fft_data[2]) / (2 * periods)
+    g_f = periods / len(data)
+    return g_a, g_a2, g_f, g_p, g_o
 
 
 def cosine(xdata, amp, freq, phase, offset):
