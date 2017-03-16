@@ -133,6 +133,8 @@ def sine(xdata, amp, freq, phase, offset):
 def sine_fit(data, periods):
     """Utility function that fits data to the sine function
 
+    Assumes evenaly spaced data.
+
     Parameters
     ----------
     data : ndarray (1d)
@@ -167,9 +169,9 @@ def sine_fit(data, periods):
         # offset is mean
         g_o = data_fixed.mean()
         # frequency is such that `nphases` covers `periods`
-        g_f = 1 / periods
+        g_f = periods / len(data)
         # guess of phase is from first data point (maybe mean of all?)
-        g_p = np.arccos((data_fixed[0] - g_o) / g_a) / np.pi - g_f * x[0]
+        g_p = np.arcsin((data_fixed[0] - g_o) / g_a) / 2 / np.pi - g_f * x[0]
         # make guess sequence
         pguess = (g_a, g_f, g_p, g_o)
 

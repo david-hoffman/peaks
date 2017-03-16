@@ -33,7 +33,7 @@ class TestSineFit(unittest.TestCase):
         """Set up our variables"""
         shape = np.random.randint(5, 50)
         periods = self.periods = np.random.rand() * 3 + 1
-        freq = 1 / periods
+        freq = periods / shape
         amp = np.random.randn()
         offset = np.random.randn()
         phase = (np.random.rand() - 1 / 2) * 5 / 3 * np.pi
