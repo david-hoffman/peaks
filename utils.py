@@ -130,6 +130,60 @@ def sine(xdata, amp, freq, phase, offset):
     return amp * np.sin(2 * np.pi * freq * xdata + phase) + offset
 
 
+def sine_fit(data, periods):
+    """Utility function that fits data to the sine function
+
+    Parameters
+    ----------
+    data : ndarray (1d)
+        data that can be modeled as a single frequency sinusoid
+    periods : numeric
+        Estimated number of periods the sine wave covers
+
+    Returns
+    -------
+    popt : ndarray
+        optimized parameters for the sine wave
+        - amplitude
+        - frequency
+        - phase
+        - offset
+    pcov : ndarray
+        covariance of optimized paramters
+    """
+    # only deal with finite data
+    # NOTE: could use masked wave here.
+    finite_args = np.isfinite(data)
+    data_fixed = data[finite_args]
+    # we need at least 4 data points to fit
+    if len(data_fixed) > 4:
+        # we can't fit data with less than 4 points
+        # make x-wave
+        x = np.arange(len(data))[finite_args]
+
+        # make guesses
+        # amp of sine wave is sqrt(2) the standard deviation
+        g_a = np.sqrt(2) * (data_fixed.std())
+        # offset is mean
+        g_o = data_fixed.mean()
+        # frequency is such that `nphases` covers `periods`
+        g_f = 1 / periods
+        # guess of phase is from first data point (maybe mean of all?)
+        g_p = np.arccos((data_fixed[0] - g_o) / g_a) / np.pi - g_f * x[0]
+        # make guess sequence
+        pguess = (g_a, g_f, g_p, g_o)
+
+        # The jacobian actually slows down the fitting my guess is there
+        # aren't generally enough points to make it worthwhile
+        return curve_fit(sine, x, data_fixed, p0=pguess)
+        # fix signs, we want phase to be positive always
+
+        # popt, pcov = curve_fit(sine, x, data_fixed, p0=pguess,
+        #                        Dfun=sine_jac, col_deriv=True)
+    else:
+        raise RuntimeError("Not enough good points to fit.")
+
+
 def sine2(xdata, amp, amp2, freq, phase, offset):
     """Utility function to fit nonlinearly"""
     result = amp * np.cos(4 * np.pi * (freq * xdata + phase))
