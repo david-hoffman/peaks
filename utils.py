@@ -86,17 +86,72 @@ def nmoment(x, counts, c, n):
 
 
 def gauss_no_offset(x, amp, x0, sigma_x):
-    """Helper function to fit 1D Gaussians without and offset"""
+    """Helper function to fit 1D Gaussians without and offset
+
+    Parameters
+    ----------
+    x : ndarray
+        X values of gaussian
+    amp : float
+        The amplitude of the gaussian
+    x0 : float
+        The center position of the gaussian
+    sigma_x : float
+        The width of the gaussian
+
+    Returns
+    -------
+    result : ndarray
+        A model of gaussian peak without offset
+    """
     return amp * np.exp(-(x - x0)**2 / (2 * sigma_x**2))
 
 
 def gauss(x, amp, x0, sigma_x, offset):
-    """Helper function to fit 1D Gaussians"""
+    """Helper function to fit 1D Gaussians
+
+    Parameters
+    ----------
+    x : ndarray
+        X values of gaussian
+    amp : float
+        The amplitude of the gaussian
+    x0 : float
+        The center position of the gaussian
+    sigma_x : float
+        The width of the gaussian
+    offset : float
+        The width of the gaussian
+
+    Returns
+    -------
+    result : ndarray
+        A model of gaussian peak with offset
+    """
     return gauss_no_offset(x, amp, x0, sigma_x) + offset
 
 
 def gauss_fit(xdata, ydata, withoffset=True, trim=None, guess_z=None):
-    """Utility function for fitting single variable gaussian data"""
+    """Utility function for fitting single variable gaussian data
+
+    Parameters
+    ----------
+    xdata : ndarray
+        X-axis
+    ydata : ndarray
+        Amplitude data
+    withoffset : bool (optional)
+        Fit with or without an offset
+    trim : float (optional)
+        How much of the xdata axis should be fit, in units of estimated sigma
+    guess_z : float (optional)
+        An estimate for center of the peak
+
+    Returns
+    -------
+    popt : ndarray
+        Optimized paramters for the fit (amp, x0, sigma_x, offset)
+    """
     # estimate the offset
     offset = ydata.min()
     ydata_corr = ydata - offset
