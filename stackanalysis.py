@@ -140,6 +140,11 @@ class StackAnalyzer(object):
                 peakfit, **kwargs)
                 for peakfit in peakfits]
 
+        # add peak number
+        for i, param in enumerate(params):
+            if param is not None:
+                for p in param:
+                    p["peak_num"] = i
         # clear nones (i.e. unsuccessful fits)
         params = [param for param in params if param is not None]
         return params
@@ -302,11 +307,12 @@ class SIMStackAnalyzer(StackAnalyzer):
                                       nphases=self.nphases,
                                       modtype=modtype,
                                       fit_func=fit_func, **kwargs)
-        self.sim_params = pd.DataFrame(list(itt.chain.from_iterable(params)))
+        sim_params = pd.DataFrame(list(itt.chain.from_iterable(params)))
+        self.sim_params = sim_params.set_index(["peak_num", "orientation"])
 
     def plot_sim_params(self, orientations=None, **kwargs):
         """Make maps of the modulation depths"""
-        sim_params = self.sim_params
+        sim_params = self.sim_params.reset_index()
         norients = self.norients
         fig, ax = plt.subplots(1, norients, figsize=(4 * norients, 4))
 
@@ -334,7 +340,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         Utility to plot a histogram of the SIM parameters
         """
         # pull sim_params
-        sim_params = self.sim_params
+        sim_params = self.sim_params.reset_index()
         # check if they have any length
         if len(sim_params):
             try:
@@ -394,9 +400,9 @@ class SIMStackAnalyzer(StackAnalyzer):
         # make a grid axes
         fig, axs = make_grid(len(to_plot))
         # loop through chosen ones
-        for (loc, params), ax in zip(to_plot.iterrows(), axs.ravel()):
+        for ((peak, orient), params), ax in zip(to_plot.iterrows(), axs.ravel()):
             # pull the amplitudes and plot
-            amp = fits[loc // self.norients].loc[params.orientation].amp
+            amp = fits[peak].loc[orient].amp
             ax.plot(amp, "o")
             # calculate the fit function and display
             x = np.linspace(0, len(amp))
@@ -409,7 +415,7 @@ class SIMStackAnalyzer(StackAnalyzer):
             ax.plot(x, sine_fit)
             # place a title with both SNRs
             ax.set_title("gSNR={:.0f}, sSNR={:.0f}, loc={}".format(
-                params.SNR, params.sin_SNR, loc // self.norients))
+                params.SNR, params.sin_SNR, (peak, orient)))
         # make the layout tight and return
         fig.tight_layout()
         fig, axs = clean_grid(fig, axs)
@@ -798,6 +804,9 @@ def calc_mod(data, *args):
 # i.e. mod = (max - min) / max when min is 0 we have perfect modulation
 # depth (1) when min = max we have the worst modulation depth (0)
 
+# we can also to a straight linear regression if we assume we know the period
+# (which we should) http://stats.stackexchange.com/questions/257785/phase-modelling-while-fitting-sine-wave-to-cyclic-data
+
 def calc_mod_ls(data, periods, nphases):
     """
     Need to change this so that it:
@@ -876,13 +885,13 @@ def calc_mod3D_ls(data, periods, nphases):
             print(data_fixed)
         else:
             opt_a, opt_a2, opt_f, opt_p, opt_o = popt
-            # if np.sign(opt_a) != np.sign(opt_a2):
-            #     # print("a1 = {}, a2 = {}".format(opt_a, opt_a2))
-            #     mod = opt_a = opt_a2 = opt_f = opt_p = opt_o = res = SNR = np.nan
-            # if opt_a < 0:
-            #     opt_a = np.abs(opt_a)
-            #     opt_a2 = np.abs(opt_a2)
-            #     opt_p += np.pi
+            if np.sign(opt_a) != np.sign(opt_a2):
+                # signs must match, waves must be in phase
+                return None
+            if opt_a < 0:
+                opt_a = np.abs(opt_a)
+                opt_a2 = np.abs(opt_a2)
+                opt_p = np.abs(np.pi)
             # # if any part of the fit is negative, mark as failure
             # if (opt_a + opt_a2) * 2 > opt_o:
             # modulation for a + b * cos(x) + c * cos(2*x) is more complicated ...
@@ -908,7 +917,7 @@ def _calc_sim_param(fit, *, periods, nphases, modtype, fit_func, **kwargs):
             # copy params over to temp for output
             result.update(params)
             # calc the SNR using the noise from the fit
-            result['SNR'] = np.median((trace.amp / trace.noise))
+            result['SNR'] = np.nanmedian((trace.amp / trace.noise))
             results.append(result)
     # need to flatten the list, next function will try to make a DataFrame
     return results
