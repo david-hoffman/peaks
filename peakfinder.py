@@ -154,12 +154,24 @@ class PeakFinder(object):
     ###########
 
     def estimate_background(self, method="median"):
+        """Estimate the background/threshold of the data
+
+        Two methods are available:
+        - "median" : calculates median value of data as thresh
+        - "mode" : if the data type is inexact it uses a histogram
+            to estimate the mode, if the data is an unsigned integer
+            then it uses `bincount`
+
+        The result of the method is that the `thresh` property is set
+        for the instance.
+        """
         if method == "median":
             self.thresh = np.median(self.data)
         elif method == "mode":
             if np.issubdtype(self.data.dtype, np.inexact):
                 hist, bins = np.histogram(self.data.ravel(), "auto")
                 maxval = hist.argmax()
+                # choose center of bin, not edges
                 self.thresh = (bins[maxval] + bins[maxval + 1]) / 2
             elif np.issubdtype(self.data.dtype, np.unsignedinteger):
                 self.thresh = np.bincount(self.data.ravel()).argmax()
