@@ -250,8 +250,8 @@ def sine_fit(data, periods):
 
 def sine2(xdata, amp, amp2, freq, phase, offset):
     """Utility function to fit nonlinearly"""
-    result = amp * np.cos(4 * np.pi * (freq * xdata + phase))
-    result += amp2 * np.cos(2 * np.pi * (freq * xdata + phase))
+    result = amp * np.cos(4 * np.pi * freq * (xdata + phase))
+    result += amp2 * np.cos(2 * np.pi * freq * (xdata + phase))
     result += offset
     return result
 
