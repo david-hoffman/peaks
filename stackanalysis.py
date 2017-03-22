@@ -32,16 +32,6 @@ except ImportError:
 # functionality from gauss2d into a parent class that can be subclassed for
 # each type of peak. Hopefully regardless of dimensionality.
 
-# Need to figure out a better way to multiprocess, maybe it makes more sense
-# to figure out how to send each stackanalyzer to each core.
-
-# new idea: pull parallel functions outside of class structure, they only
-# depend on stack then only the functions need to be pickleable. If we can
-# use the multiprocessing Array object to hold our data as a read only
-# datatype then we should be able to access it from
-
-# Isaac suggests trying to use Mr. Job
-
 
 class StackAnalyzer(object):
     """

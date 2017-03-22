@@ -662,9 +662,11 @@ class Gauss2D(object):
         # it must be greater than 0 but it can't be too much larger than the
         # entire range of data values
         if not (0 < popt[0] < (data.max() - data.min()) * 5):
-            self.errmsg = """Amplitude unphysical, amp = {:.3f},
-                          data range = {:.3f}
-                          """.format(popt[0], data.max() - data.min())
+            self.errmsg = ("Amplitude unphysical, amp = {:.3f},"
+                           " data range = {:.3f}")
+            # cast to float to avoid memmap problems
+            self.errmsg = self.errmsg.format(popt[0],
+                                             np.float(data.max() - data.min()))
             self.ier = 11
 
     def estimate_params(self, detrenddata=False):
