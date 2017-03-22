@@ -5,6 +5,13 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import griddata
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn import linear_model
+try:
+    from pyfftw.interfaces.numpy_fft import rfftn, rfftfreq
+    import pyfftw
+    # Turn on the cache for optimum performance
+    pyfftw.interfaces.cache.enable()
+except ImportError:
+    from numpy.fft import rfftn, rfftfreq
 
 
 def detrend(data, degree=1):
@@ -250,8 +257,9 @@ def sine_fit(data, periods):
 
 def sine2(xdata, amp, amp2, freq, phase, offset):
     """Utility function to fit nonlinearly"""
-    result = amp * np.cos(4 * np.pi * freq * (xdata + phase))
-    result += amp2 * np.cos(2 * np.pi * freq * (xdata + phase))
+    arg = 2 * np.pi * freq * xdata + phase
+    result = amp * np.cos(2 * arg)
+    result += amp2 * np.cos(arg)
     result += offset
     return result
 
