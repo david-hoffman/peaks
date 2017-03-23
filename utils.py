@@ -189,7 +189,7 @@ def gauss_fit(xdata, ydata, withoffset=True, trim=None, guess_z=None):
 
 def sine(xdata, amp, freq, phase, offset):
     """Utility function to fit nonlinearly"""
-    return amp * np.sin(2 * np.pi * freq * xdata + phase) + offset
+    return amp * np.cos(2 * np.pi * freq * xdata + phase) + offset
 
 
 def _estimate_sine_params(data, periods):
@@ -205,7 +205,7 @@ def _estimate_sine_params(data, periods):
     with np.errstate(invalid="ignore"):
         # this could possibly take into account all the data
         # np.arcsin((data - g_o) / g_a) / 2 / np.pi - g_f * x
-        g_p = np.arcsin((data[0] - g_o) / g_a) / 2 / np.pi
+        g_p = np.arccos((data[0] - g_o) / g_a) / 2 / np.pi
     # make guess sequence
     return np.nan_to_num((g_a, g_f, g_p, g_o))
 

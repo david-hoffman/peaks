@@ -405,7 +405,7 @@ class SIMStackAnalyzer(StackAnalyzer):
             amp = fits[peak].loc[orient].amp
             ax.plot(amp, "o")
             # calculate the fit function and display
-            x = np.linspace(0, len(amp))
+            x = np.linspace(0, len(amp) - 1)
             if "samp2" in params.keys():
                 sine_fit = sine2(x, params.samp, params.samp2, params.freq,
                                  params.phase, params.soffset)
