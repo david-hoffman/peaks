@@ -143,8 +143,11 @@ class StackAnalyzer(object):
         # add peak number
         for i, param in enumerate(params):
             if param is not None:
-                for p in param:
-                    p["peak_num"] = i
+                if isinstance(param, dict):
+                    param["peak_num"] = i
+                else:
+                    for p in param:
+                        p["peak_num"] = i
         # clear nones (i.e. unsuccessful fits)
         params = [param for param in params if param is not None]
         return params
