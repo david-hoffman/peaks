@@ -271,6 +271,12 @@ class PeakFinder(object):
 
         return labels
 
+    def plot_blob_grid(self, window=11, **kwargs):
+        """Display a grid of blobs"""
+        return display_grid({
+            i: self.data[slice_maker(y, x, window)]
+            for i, (y, x, s, r) in enumerate(self.blobs)}, **kwargs)
+
     def plot_labels(self, withfits=False, diameter=None, **kwargs):
         '''
         Generate a plot of the found peaks, individually
@@ -289,8 +295,8 @@ class PeakFinder(object):
         labels = self._labels
         data = self.data
 
-        # check to see if data has been labelled
-        if labels is None:
+        # check to see if data has been labelled or a diameter value is passed
+        if labels is None or diameter is not None:
             labels = self.label_blobs(diameter=diameter)
             if labels is None:
                 warnings.warn('Labels were not available', UserWarning)
@@ -311,6 +317,8 @@ class PeakFinder(object):
         for n, (obj, ax) in enumerate(zip(my_objects, axes.ravel())):
             ex = (obj[1].start, obj[1].stop - 1, obj[0].stop - 1, obj[0].start)
             ax.matshow(data[obj], extent=ex, **kwargs)
+            ax.set_title(n)
+            ax.grid("off")
             if withfits:
                 # generate the model fit to display, from parameters.
                 dict_params = dict(fits.loc[n].dropna())
