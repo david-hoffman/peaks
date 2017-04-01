@@ -513,6 +513,11 @@ class Gauss2D(object):
                 guess_params = np.delete(guess_params, (4, 5))
             elif modeltype.lower() == 'norot':
                 guess_params = np.delete(guess_params, 5)
+            elif modeltype.lower() == 'full':
+                pass
+            else:
+                raise RuntimeError(
+                    "modeltype is not one of: 'sym', 'norot', 'full'")
 
         # handle the case where the user passes a dictionary of values.
         if isinstance(guess_params, dict):
@@ -562,9 +567,11 @@ class Gauss2D(object):
                 if not (data >= 0).all():
                     raise ValueError("Data is not non-negative, please try fittype='ls' instead")
                 mp._wrap_func = _wrap_func_mle
-            else:
+            elif fittype.lower() == 'ls':
                 # use standard ls
                 mp._wrap_func = _wrap_func_ls
+            else:
+                raise RuntimeError("fittype is not one of: 'ls', 'mle'")
             try:
                 popt, pcov, infodict, errmsg, ier = curve_fit(
                     model_ravel, (xx, yy), data.ravel(), p0=guess_params,
