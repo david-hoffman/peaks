@@ -139,7 +139,6 @@ class StackAnalyzer(object):
             params = [par_func(
                 peakfit, **kwargs)
                 for peakfit in peakfits]
-
         # add peak number
         for i, param in enumerate(params):
             if param is not None:
@@ -311,7 +310,8 @@ class SIMStackAnalyzer(StackAnalyzer):
                                       modtype=modtype,
                                       fit_func=fit_func, **kwargs)
         sim_params = pd.DataFrame(list(itt.chain.from_iterable(params)))
-        self.sim_params = sim_params.set_index(["peak_num", "orientation"])
+        if len(sim_params):
+            self.sim_params = sim_params.set_index(["peak_num", "orientation"])
 
     def plot_sim_params(self, orientations=None, **kwargs):
         """Make maps of the modulation depths"""
