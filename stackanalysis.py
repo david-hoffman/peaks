@@ -50,7 +50,7 @@ class StackAnalyzer(object):
         """
         raise NotImplementedError
 
-    def fitPeaks(self, fitwidth, nproc=0, par_func=None, **kwargs):
+    def fitPeaks(self, fitwidth, nproc=0, par_func=None, quiet=True, **kwargs):
         """
         Fit all peaks found by peak finder, has the ability to split the peaks
         among multiple processors
@@ -86,7 +86,8 @@ class StackAnalyzer(object):
             # start pool, initilize shared array on each worker.
             with mp.Pool(nproc, _init_func,
                          (par_func, shared_array_base, self.stack.shape)) as p:
-                print('Multiprocessing engaged with {} cores'.format(nproc))
+                if not quiet:
+                    print('Multiprocessing engaged with {} cores'.format(nproc))
                 # farm out the tasks
                 results = [p.apply_async(
                     par_func,
@@ -106,7 +107,7 @@ class StackAnalyzer(object):
         self.fits = fits
         return fits
 
-    def _calc_params(self, nproc=0, par_func=None, **kwargs):
+    def _calc_params(self, nproc=0, par_func=None, quiet=True, **kwargs):
         """
         Super class method to calculate parameters for child stackanalyzers
 
@@ -123,7 +124,8 @@ class StackAnalyzer(object):
                 nproc = os.cpu_count()
             # spin up the pool of workers
             with mp.Pool(nproc) as p:
-                print('Multiprocessing engaged with {} cores'.format(nproc))
+                if not quiet:
+                    print('Multiprocessing engaged with {} cores'.format(nproc))
                 # farm out the tasks, because we're using module level
                 # functions instead of class methods we avoid pickling
                 # too much data.
