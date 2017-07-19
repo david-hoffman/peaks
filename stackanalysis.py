@@ -537,6 +537,10 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
 
             # set up the fit and perform it using last best params
             sub_stack = stack[myslice]
+            if sub_stack.size == 0:
+                # the fir window has moved to the edge, break
+                print('Fit window moved to edge of ROI')
+                break
             fit = Gauss2D(sub_stack)
 
             # move our guess coefs back into the window

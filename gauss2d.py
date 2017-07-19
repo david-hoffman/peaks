@@ -596,7 +596,6 @@ class Gauss2D(object):
                 for k, v in errors.items():
                     if v in self.errmsg:
                         self.ier = k
-
             else:
                 # if we save the infodict as well then we'll start using a lot
                 # of memory
