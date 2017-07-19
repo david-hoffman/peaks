@@ -502,7 +502,7 @@ class PeakFinder(object):
                 r = int(r)
                 fmtstr = '{}'
             else:
-                fmtstr = '{:.3f}'
+                fmtstr = '{:.0f}'
 
             ax.annotate(fmtstr.format(r), xy=(x, y),
                         xytext=(x + diameter / 2, y + diameter / 2),

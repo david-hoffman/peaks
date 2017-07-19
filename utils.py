@@ -1,3 +1,11 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# utils.py
+"""
+Utility functions for the `peaks` package
+
+Copyright (c) 2017, David Hoffman
+"""
 import numpy as np
 from scipy.optimize import curve_fit
 from matplotlib import pyplot as plt
