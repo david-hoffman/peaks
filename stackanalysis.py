@@ -642,8 +642,10 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
         # turn everything into a data frame for easy manipulation.
         peakfits_df = pd.DataFrame(peakfits)
         # convert sigmas to positive values
-        peakfits_df[['sigma_x', 'sigma_y']] =\
-            abs(peakfits_df[['sigma_x', 'sigma_y']])
+        try:
+            peakfits_df[['sigma_x', 'sigma_y']] = abs(peakfits_df[['sigma_x', 'sigma_y']])
+        except KeyError:
+            peakfits_df['sigma_x'] = abs(peakfits_df['sigma_x'])
 
         return peakfits_df.set_index('slice').sort_index()
     else:
