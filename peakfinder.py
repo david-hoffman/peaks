@@ -201,8 +201,8 @@ class PeakFinder(object):
         data = self.data.astype(float)
         # take care of the default kwargs with 'good' values
         default_kwargs = {
-            'min_sigma': self.blob_sigma / 1.6,
-            'max_sigma': self.blob_sigma * 1.6,
+            'min_sigma': self.blob_sigma / np.sqrt(1.6),
+            'max_sigma': self.blob_sigma * np.sqrt(1.6) * 0.9,
             'threshold': self.thresh
         }
 
