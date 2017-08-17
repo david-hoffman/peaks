@@ -356,7 +356,15 @@ class PeakFinder(object):
         return self.blobs
 
     def fit_blobs(self, width=10, **kwargs):
-        """Fit blobs to Gaussian funtion."""
+        """Fit blobs to Gaussian funtion.
+
+        Parameters
+        ----------
+        width : int
+            The size of the fitting window in pixels
+
+        **kwargs is for Gauss2D optimize_params
+        """
         # If we don't have blobs, find them.
         if self._blobs is None:
             self.find_blobs()
@@ -385,6 +393,8 @@ class PeakFinder(object):
         self._fits = peakfits_df
         # Return it to user
         return peakfits_df
+
+    fit_blobs.__doc__ += Gauss2D.optimize_params.__doc__
 
     def prune_blobs(self, radius):
             """
