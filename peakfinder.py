@@ -57,7 +57,7 @@ class PeakFinder(object):
             the estimated width of the peaks
     '''
 
-    def __init__(self, data, sigma=1.0, method="median"):
+    def __init__(self, data, sigma=1.0, background="median"):
         # some error checking
         if not isinstance(data, np.ndarray):
             raise TypeError('data is not a numpy array')
@@ -69,7 +69,10 @@ class PeakFinder(object):
 
         self._data = data
         # make an initial guess of the threshold
-        self.estimate_background(method)
+        if isinstance(background, str):
+            self.estimate_background(background)
+        else:
+            self.thresh = background
         self._blobs = None
         # estimated width of the blobs
         self._blob_sigma = sigma
