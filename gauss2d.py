@@ -45,7 +45,8 @@ def _general_function_mle(params, xdata, ydata, function):
         # jury rigged to enforce positivity
         # once scipy 0.17 is released this won't be necessary.
         # don't know what the above comment means ...
-        warnings.warn("Chi^2 is less than 0")
+        # TODO: switch the below line to logging module
+        # warnings.warn("Chi^2 is less than 0")
         return np.sqrt(np.nan_to_num(np.inf)) * np.ones_like(chi2)
     else:
         # return the sqrt because the np.leastsq will square and sum the result
