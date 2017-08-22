@@ -59,7 +59,8 @@ def _chi2_mle(f):
     part1 = (f - y).sum(0)
     # don't include points where the data is less
     # than zero as this isn't allowed.
-    part2 = - (y * np.log(f / y))[y > 0].sum(0)
+    with np.errstate(divide="ignore"):
+        part2 = - (y * np.log(f / y))[y > 0].sum(0)
     return part1 + part2
 
 
