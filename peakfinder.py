@@ -508,7 +508,7 @@ class PeakFinder(object):
         fig, ax = plt.subplots(1, 1, figsize=(size, size))
 
         ax.matshow(self.data, **kwargs)
-        for blob in self.blobs:
+        for i, blob in enumerate(self.blobs):
             y, x, s, r = blob
             if diameter is None:
                 diameter = s * 4
@@ -520,9 +520,9 @@ class PeakFinder(object):
                 r = int(r)
                 fmtstr = '{}'
             else:
-                fmtstr = '{:.0f}'
+                fmtstr = '{}:{:.0f}'
 
-            ax.annotate(fmtstr.format(r), xy=(x, y),
+            ax.annotate(fmtstr.format(i, r), xy=(x, y),
                         xytext=(x + diameter / 2, y + diameter / 2),
                         textcoords='data', color='k',
                         backgroundcolor=(1, 1, 1, 0.5), xycoords='data')
