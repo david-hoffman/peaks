@@ -229,7 +229,12 @@ class PeakFinder(object):
             # blobs, as returned, has the third index as the estimated width
             # for our application it will be beneficial to have the intensity
             # at the estimated center as well
-            blobs = np.array([[y, x, s, self.data[int(y), int(x)]]
+            def amp(data, y, x, s):
+                """get the amp by estimating max - min"""
+                d = self.data[slice_maker(y, x, s * 2)]
+                return d.max() - d.min()
+
+            blobs = np.array([[y, x, s, amp(self.data, y, x, s)]
                               for y, x, s in blobs])
 
             # sort blobs by the max amp value, descending
