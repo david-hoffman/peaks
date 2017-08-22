@@ -19,16 +19,21 @@ Copyright (c) 2017, David Hoffman
 
 import numpy as np
 from numpy import linalg as la
-import scipy.optimize.curve_fit
+import scipy.optimize
 
 
 def _chi2_ls(f):
-    """$\chi^2_ls$"""
+    """Sum of the squares of the residuals
+
+    Assumes that f returns residuals.
+
+    Minimizing this will maximize the likelihood for a
+    data model with gaussian deviates."""
     return 0.5 * (f**2).sum(0)
 
 
 def _update_ls(x0, f, Dfun):
-    """should use partials inside lm_ls"""
+    """Hessian and gradient calculations for gaussian deviates"""
     # calculate the jacobian
     # j shape (ndata, nparams)
     j = Dfun(x0)
@@ -42,19 +47,24 @@ def _update_ls(x0, f, Dfun):
 
 
 def _chi2_mle(f):
-    """$\chi^2_ls$"""
+    """The equivalent "chi2" for poisson deviates
+
+    Minimizing this will maximize the likelihood for a data
+    model with gaussian deviates."""
     f, y = f
     if f.min() <= 0:
         # this is not allowed so make chi2
         # large to avoid
         return np.inf
-    part1 = (f - y).sum()
-    part2 = - (y * np.log(f / y))[y > 0].sum()
+    part1 = (f - y).sum(0)
+    # don't include points where the data is less
+    # than zero as this isn't allowed.
+    part2 = - (y * np.log(f / y))[y > 0].sum(0)
     return part1 + part2
 
 
 def _update_mle(x0, f, Dfun):
-    """should use partials inside lm_ls"""
+    """Hessian and gradient calculations for poisson deviates"""
     # calculate the jacobian
     # j shape (ndata, nparams)
     f, y = f
@@ -73,6 +83,7 @@ def _wrap_func_mle(func, xdata, ydata, transform):
     """Returns f and xdata"""
     if transform is None:
         def func_wrapped(params):
+            # return function and data
             return func(xdata, *params), ydata
     elif transform.ndim == 1:
         raise NotImplementedError
@@ -97,6 +108,40 @@ def _wrap_jac_mle(jac, xdata, transform):
         raise NotImplementedError
     else:
         raise NotImplementedError
+    return jac_wrapped
+
+
+def _wrap_func_ls(func, xdata, ydata, transform):
+    if transform is None:
+        def func_wrapped(params):
+            return func(xdata, *params) - ydata
+    elif transform.ndim == 1:
+        def func_wrapped(params):
+            return transform * (func(xdata, *params) - ydata)
+    else:
+        # Chisq = (y - yd)^T C^{-1} (y-yd)
+        # transform = L such that C = L L^T
+        # C^{-1} = L^{-T} L^{-1}
+        # Chisq = (y - yd)^T L^{-T} L^{-1} (y-yd)
+        # Define (y-yd)' = L^{-1} (y-yd)
+        # by solving
+        # L (y-yd)' = (y-yd)
+        # and minimize (y-yd)'^T (y-yd)'
+        def func_wrapped(params):
+            return solve_triangular(transform, func(xdata, *params) - ydata, lower=True)
+    return func_wrapped
+
+
+def _wrap_jac_ls(jac, xdata, transform):
+    if transform is None:
+        def jac_wrapped(params):
+            return jac(xdata, *params)
+    elif transform.ndim == 1:
+        def jac_wrapped(params):
+            return transform[:, np.newaxis] * np.asarray(jac(xdata, *params))
+    else:
+        def jac_wrapped(params):
+            return solve_triangular(transform, np.asarray(jac(xdata, *params)), lower=True)
     return jac_wrapped
 
 
@@ -153,15 +198,15 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
         in the measurement is poisson distributed while least squares ("ls") assumes
         normally distributed noise.
     """
-    
+    info = 0
     x0 = np.asarray(x0).flatten()
     n = len(x0)
     if not isinstance(args, tuple):
         args = (args,)
-#     shape, dtype = _check_func('leastsq', 'func', func, x0, args, n)
-#     m = shape[0]
-#     if n > m:
-#         raise TypeError('Improper input: N=%s must not exceed M=%s' % (n, m))
+    # shape, dtype = _check_func('leastsq', 'func', func, x0, args, n)
+    # m = shape[0]
+    # if n > m:
+    #     raise TypeError('Improper input: N=%s must not exceed M=%s' % (n, m))
     if Dfun is None:
         raise NotImplementedError
         if epsfcn is None:
@@ -169,12 +214,13 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
     else:
         if col_deriv:
             pass
-#             _check_func('leastsq', 'Dfun', Dfun, x0, args, n, (n, m))
+            # _check_func('leastsq', 'Dfun', Dfun, x0, args, n, (n, m))
         else:
             raise NotImplementedError("Column derivatives required")
         if maxfev is None:
             maxfev = 100 * (n + 1)
 
+    # this is stolen from scipy.leastsq so it isn't fully implemented
     errors = {0: ["Improper input parameters.", TypeError],
               1: ["Both actual and predicted relative reductions "
                   "in the sum of squares\n  are at most %f" % ftol, None],
@@ -201,25 +247,26 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
               'unknown': ["Unknown error.", TypeError]}
     
     if maxfev is None:
-        maxfev = 100 * (len(p0) + 1)
+        maxfev = 100 * (len(x0) + 1)
 
-#     gtest = lambda g : npla.norm(g, np.inf) <= gtol
     def gtest(g):
+        """test if the gradient has converged"""
         if gtol:
             return np.abs(g).max() <= gtol
         else:
             return False
-    def xtest(dp, p):
-        norm_dp = la.norm(dp)
-        return norm_dp <= xtol * (norm_dp + xtol)
+    def xtest(dx, x):
+        """see if the parameters have converged"""
+        return la.norm(dx) <= xtol * (la.norm(x) + xtol)
     
-    # need residuals
+    # set up update and chi2 for use
     if method == "ls":
         def update(x0, f):
             return _update_ls(x0, f, Dfun)
         
         def chi2(f):
             return _chi2_ls(f)
+
     elif method == "mle":
         def update(x0, f):
             return _update_mle(x0, f, Dfun)
@@ -229,22 +276,27 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
     else:
         raise TypeError("Method {} not recognized".format(method))
 
+    # get initial function, jacobian, hessian and gradient
     f = func(x0)
     j, a, g = update(x0, f)
     
+    # initialize chi2
     chisq_old = chi2(f)
     
+    # make our scaling factor
     lam = factor * np.diagonal(a).max()
     
     x = x0
     
     for ev in range(maxfev):
         if gtest(g):
+            info = 4
             break
         # calculate proposed step
         aug_a = a + np.diag(np.ones_like(g) * lam)
         dx = -la.inv(aug_a) @ g
         if xtest(dx, x):
+            info = 2
             break
         # make test move, I think I should be saving previous
         # position so that I can "undo" if this is bad
@@ -254,7 +306,9 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
         # see if we reduced chisq, note we should do more here
         rho = chisq_old - chisq_new
         if rho > 0:
+            # ftest
             if rho <= ftol * chisq_old:
+                info = 1
                 break
             # update params, chisq and a and g
             x0 = x
@@ -263,53 +317,36 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
             lam /= factor
         else:
             lam *= factor
+    else:
+        # loop exited normally
+        info = 5
             
     if method == "mle":
         # remember we return the data with f?
         f = f[0]
-    infodict = dict(fvec=f, nfev=ev)
-    popt, pcov, errmsg, ier = x, None, None, 1
+
+    infodict = dict(fvec=f, fjac=j, nfev=ev)
+    
+    if info not in [1, 2, 3, 4] and not full_output:
+        if info in [5, 6, 7, 8]:
+            warnings.warn(errors[info][0], RuntimeWarning)
+        else:
+            try:
+                raise errors[info][1](errors[info][0])
+            except KeyError:
+                raise errors['unknown'][1](errors['unknown'][0])
+
+    errmsg = errors[info][0]
+
+    popt, cov_x = x, None
+    
     if full_output:
-        return popt, pcov, infodict, errmsg, ier
+        return popt, cov_x, infodict, errmsg, info
     else:
-        return popt, pcov
+        return popt, cov_x
 
 
-def _wrap_func_ls(func, xdata, ydata, transform):
-    if transform is None:
-        def func_wrapped(params):
-            return func(xdata, *params) - ydata
-    elif transform.ndim == 1:
-        def func_wrapped(params):
-            return transform * (func(xdata, *params) - ydata)
-    else:
-        # Chisq = (y - yd)^T C^{-1} (y-yd)
-        # transform = L such that C = L L^T
-        # C^{-1} = L^{-T} L^{-1}
-        # Chisq = (y - yd)^T L^{-T} L^{-1} (y-yd)
-        # Define (y-yd)' = L^{-1} (y-yd)
-        # by solving
-        # L (y-yd)' = (y-yd)
-        # and minimize (y-yd)'^T (y-yd)'
-        def func_wrapped(params):
-            return solve_triangular(transform, func(xdata, *params) - ydata, lower=True)
-    return func_wrapped
-
-
-def _wrap_jac_ls(jac, xdata, transform):
-    if transform is None:
-        def jac_wrapped(params):
-            return jac(xdata, *params)
-    elif transform.ndim == 1:
-        def jac_wrapped(params):
-            return transform[:, np.newaxis] * np.asarray(jac(xdata, *params))
-    else:
-        def jac_wrapped(params):
-            return solve_triangular(transform, np.asarray(jac(xdata, *params)), lower=True)
-    return jac_wrapped
-
-
-def curve_fit_dph(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
+def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
                   check_finite=True, bounds=(-np.inf, np.inf), method=None,
                   jac=None, **kwargs):
     """
@@ -390,10 +427,11 @@ def curve_fit_dph(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
         Keyword arguments passed to `leastsq` for ``method='lm'`` or
         `least_squares` otherwise."""
     if method is None:
+        # default to scipy/minpack implementation.
         method = "lm"
         
     if method in {'lm', 'trf', 'dogbox'}:
-        return curve_fit(f, xdata, ydata, p0, sigma, absolute_sigma,
+        return scipy.optimize.curve_fit(f, xdata, ydata, p0, sigma, absolute_sigma,
                   check_finite, bounds, method,
                   jac, **kwargs)
     elif method == "ls":
@@ -438,12 +476,21 @@ def curve_fit_dph(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
     # Remove full_output from kwargs, otherwise we're passing it in twice.
     return_full = kwargs.pop('full_output', False)
     res = lm(func, p0, Dfun=jac, full_output=1, method=method, **kwargs)
-    popt, pcov, infodict, errmsg, ier = res
+    popt, pcov, infodict, errmsg, info = res
     cost = np.sum(infodict['fvec'] ** 2)
-    if ier not in [1, 2, 3, 4]:
+
+
+    # Do Moore-Penrose inverse discarding zero singular values.
+    _, s, VT = la.svd(infodict['fjac'], full_matrices=False)
+    threshold = np.finfo(float).eps * max(infodict['fjac'].shape) * s[0]
+    s = s[s > threshold]
+    VT = VT[:s.size]
+    pcov = np.dot(VT.T / s**2, VT)
+
+    if info not in [1, 2, 3, 4]:
         raise RuntimeError("Optimal parameters not found: " + errmsg)
 
     if return_full:
-        return popt, pcov, infodict, errmsg, ier
+        return popt, pcov, infodict, errmsg, info
     else:
         return popt, pcov
