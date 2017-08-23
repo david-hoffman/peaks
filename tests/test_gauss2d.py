@@ -297,11 +297,11 @@ class TestGauss2DSelfConsistencyFixed(_TestGauss2DSelfConsistencyBase):
         # choose sigmas
         sigma_y, sigma_x = 5, 3
         # choose amp
-        amp = 10
+        amp = 20
         # choose rho
         rho = 0.5
         # choose offset
-        offset = 20
+        offset = 10
         return amp, x0, y0, sigma_x, sigma_y, rho, offset
 
 
@@ -319,9 +319,9 @@ class TestGauss2DSelfConsistencyRand(_TestGauss2DSelfConsistencyBase):
         # choose sigmas
         sigma_y, sigma_x = (0.1 * np.random.random(2) + 0.1) * (ny, nx)
         # choose amp
-        amp = (np.random.random() + 1.0) * 10
+        amp = np.random.random() * 100 + 10
         # choose rho
         rho = (np.random.random() * 2 - 1) * 0.99
         # choose offset
-        offset = np.random.random() * 10
+        offset = np.random.random() * 100
         return amp, x0, y0, sigma_x, sigma_y, rho, offset

@@ -22,77 +22,14 @@ import numpy as np
 from skimage.measure import moments
 # need basic curve fitting
 from scipy.optimize import OptimizeWarning
-# import curve_fit in a way that we can monkey patch it.
-import scipy.optimize.minpack as mp
-from scipy.linalg import solve_triangular
 # need to detrend data before estimating parameters
-from .utils import detrend, _ensure_positive
+from .utils import detrend
+from .lm import curve_fit
 
 # Eventually we'll want to abstract the useful, abstract bits of this
 # class to a parent class called peak that will allow for multiple types
 # of fits
 # rho = cos(theta)
-
-
-# Functions to monkey patch in...
-def _general_function_mle(params, xdata, ydata, function):
-    # calculate the function
-    f = function(xdata, *params)
-    # calculate the MLE version of chi2
-    f, ydata = _ensure_positive(f), _ensure_positive(ydata * 1.0)
-    chi2 = 2 * (f - ydata - ydata * np.log(f / ydata))
-    if chi2.min() < 0:
-        # jury rigged to enforce positivity
-        # once scipy 0.17 is released this won't be necessary.
-        # don't know what the above comment means ...
-        # TODO: switch the below line to logging module
-        # warnings.warn("Chi^2 is less than 0")
-        return np.sqrt(np.nan_to_num(np.inf)) * np.ones_like(chi2)
-    else:
-        # return the sqrt because the np.leastsq will square and sum the result
-        return np.sqrt(chi2)
-
-
-def _wrap_func_mle(func, xdata, ydata, transform):
-    if transform is None:
-        def func_wrapped(params):
-            return _general_function_mle(params, xdata, ydata, func)
-    elif transform.ndim == 1:
-        def func_wrapped(params):
-            return transform * (_general_function_mle(params, xdata, ydata, func))
-    else:
-        # Chisq = (y - yd)^T C^{-1} (y-yd)
-        # transform = L such that C = L L^T
-        # C^{-1} = L^{-T} L^{-1}
-        # Chisq = (y - yd)^T L^{-T} L^{-1} (y-yd)
-        # Define (y-yd)' = L^{-1} (y-yd)
-        # by solving
-        # L (y-yd)' = (y-yd)
-        # and minimize (y-yd)'^T (y-yd)'
-        def func_wrapped(params):
-            return solve_triangular(transform, _general_function_mle(params, xdata, ydata, func), lower=True)
-    return func_wrapped
-
-
-def _wrap_func_ls(func, xdata, ydata, transform):
-    if transform is None:
-        def func_wrapped(params):
-            return func(xdata, *params) - ydata
-    elif transform.ndim == 1:
-        def func_wrapped(params):
-            return transform * (func(xdata, *params) - ydata)
-    else:
-        # Chisq = (y - yd)^T C^{-1} (y-yd)
-        # transform = L such that C = L L^T
-        # C^{-1} = L^{-T} L^{-1}
-        # Chisq = (y - yd)^T L^{-T} L^{-1} (y-yd)
-        # Define (y-yd)' = L^{-1} (y-yd)
-        # by solving
-        # L (y-yd)' = (y-yd)
-        # and minimize (y-yd)'^T (y-yd)'
-        def func_wrapped(params):
-            return solve_triangular(transform, func(xdata, *params) - ydata, lower=True)
-    return func_wrapped
 
 
 class Gauss2D(object):
@@ -564,19 +501,17 @@ class Gauss2D(object):
             warnings.simplefilter("ignore", OptimizeWarning)
 
             if fittype.lower() == 'mle':
-                # monkey patch in mle functions
-                if not (data >= 0).all():
-                    raise ValueError("Data is not non-negative, please try fittype='ls' instead")
-                mp._wrap_func = _wrap_func_mle
+                meth = "mle"
             elif fittype.lower() == 'ls':
                 # use standard ls
-                mp._wrap_func = _wrap_func_ls
+                # default to scipy
+                meth = None
             else:
                 raise RuntimeError("fittype is not one of: 'ls', 'mle'")
             try:
                 popt, pcov, infodict, errmsg, ier = curve_fit(
                     model_ravel, (xx, yy), data.ravel(), p0=guess_params,
-                    bounds=bounds, full_output=True, jac=self.model_jac)
+                    bounds=bounds, full_output=True, jac=self.model_jac, method=meth)
             except RuntimeError as e:
                 # print(e)
                 # now we need to re-parse the error message to set all the
@@ -861,112 +796,6 @@ class Gauss2D(object):
         True
         """
         return self._params_dict(self.guess_params)
-
-# we need to fix how `curve_fit` behaves with return_full
-# this whole section will be removed once scipy is updated.
-from scipy.linalg import svd
-from scipy.optimize._lsq import least_squares
-from scipy.optimize._lsq.common import make_strictly_feasible
-from scipy.optimize._lsq.least_squares import prepare_bounds
-def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
-              check_finite=True, bounds=(-np.inf, np.inf), method=None,
-              jac=None, **kwargs):
-    if p0 is None:
-        # determine number of parameters by inspecting the function
-        from scipy._lib._util import getargspec_no_self as _getargspec
-        args, varargs, varkw, defaults = _getargspec(f)
-        if len(args) < 2:
-            raise ValueError("Unable to determine number of fit parameters.")
-        n = len(args) - 1
-    else:
-        p0 = np.atleast_1d(p0)
-        n = p0.size
-
-    lb, ub = prepare_bounds(bounds, n)
-    if p0 is None:
-        p0 = mp._initialize_feasible(lb, ub)
-
-    bounded_problem = np.any((lb > -np.inf) | (ub < np.inf))
-    if method is None:
-        if bounded_problem:
-            method = 'trf'
-        else:
-            method = 'lm'
-
-    if method == 'lm' and bounded_problem:
-        raise ValueError("Method 'lm' only works for unconstrained problems. "
-                         "Use 'trf' or 'dogbox' instead.")
-
-    # NaNs can not be handled
-    if check_finite:
-        ydata = np.asarray_chkfinite(ydata)
-    else:
-        ydata = np.asarray(ydata)
-
-    if isinstance(xdata, (list, tuple, np.ndarray)):
-        # `xdata` is passed straight to the user-defined `f`, so allow
-        # non-array_like `xdata`.
-        if check_finite:
-            xdata = np.asarray_chkfinite(xdata)
-        else:
-            xdata = np.asarray(xdata)
-
-    weights = 1.0 / np.asarray(sigma) if sigma is not None else None
-    func = mp._wrap_func(f, xdata, ydata, weights)
-    if callable(jac):
-        jac = mp._wrap_jac(jac, xdata, weights)
-    elif jac is None and method != 'lm':
-        jac = '2-point'
-
-    # Remove full_output from kwargs, otherwise we're passing it in twice.
-    return_full = kwargs.pop('full_output', False)
-    if method == 'lm':
-        res = mp.leastsq(func, p0, Dfun=jac, full_output=1, **kwargs)
-        popt, pcov, infodict, errmsg, ier = res
-        cost = np.sum(infodict['fvec'] ** 2)
-    else:
-        res = least_squares(func, p0, jac=jac, bounds=bounds, method=method,
-                            **kwargs)
-
-        cost = 2 * res.cost  # res.cost is half sum of squares!
-        popt = res.x
-
-        # Do Moore-Penrose inverse discarding zero singular values.
-        _, s, VT = svd(res.jac, full_matrices=False)
-        threshold = np.finfo(float).eps * max(res.jac.shape) * s[0]
-        s = s[s > threshold]
-        VT = VT[:s.size]
-        pcov = np.dot(VT.T / s**2, VT)
-        # infodict = dict(nfev=res.nfev, fvec=res.fun, fjac=res.jac, ipvt=None,
-        #                 qtf=None)
-        infodict = None
-        ier = res.status
-        errmsg = res.message
-    if ier not in [1, 2, 3, 4]:
-        raise RuntimeError("Optimal parameters not found: " + errmsg)
-
-    warn_cov = False
-    if pcov is None:
-        # indeterminate covariance
-        pcov = np.zeros((len(popt), len(popt)), dtype=float)
-        pcov.fill(np.inf)
-        warn_cov = True
-    elif not absolute_sigma:
-        if ydata.size > p0.size:
-            s_sq = cost / (ydata.size - p0.size)
-            pcov = pcov * s_sq
-        else:
-            pcov.fill(np.inf)
-            warn_cov = True
-
-    if warn_cov:
-        warnings.warn('Covariance of the parameters could not be estimated',
-                      category=OptimizeWarning)
-
-    if return_full:
-        return popt, pcov, infodict, errmsg, ier
-    else:
-        return popt, pcov
 
 
 if __name__ == '__main__':

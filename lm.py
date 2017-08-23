@@ -13,7 +13,7 @@ gaussian deviates
 1. Methods for Non-Linear Least Squares Problems (2nd ed.) http://www2.imm.dtu.dk/pubdb/views/publication_details.php?id=3215 (accessed Aug 18, 2017).
 1. [Laurence, T. A.; Chromy, B. A. Efficient Maximum Likelihood Estimator Fitting of Histograms. Nat Meth 2010, 7 (5), 338–339.](http://www.nature.com/nmeth/journal/v7/n5/full/nmeth0510-338.html)
 1. Numerical Recipes in C: The Art of Scientific Computing, 2nd ed.; Press, W. H., Ed.; Cambridge University Press: Cambridge ; New York, 1992.
-
+1. https://www.osti.gov/scitech/servlets/purl/7256021/
 Copyright (c) 2017, David Hoffman
 """
 
@@ -59,7 +59,7 @@ def _chi2_mle(f):
     part1 = (f - y).sum(0)
     # don't include points where the data is less
     # than zero as this isn't allowed.
-    with np.errstate(divide="ignore"):
+    with np.errstate(divide="ignore", invalid="ignore"):
         part2 = - (y * np.log(f / y))[y > 0].sum(0)
     return part1 + part2
 
@@ -285,7 +285,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
     chisq_old = chi2(f)
     
     # make our scaling factor
-    lam = factor * np.diagonal(a).max()
+    mu = factor * np.diagonal(a).max()
     
     x = x0
     
@@ -294,7 +294,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
             info = 4
             break
         # calculate proposed step
-        aug_a = a + np.diag(np.ones_like(g) * lam)
+        aug_a = a + np.diag(np.ones_like(g) * mu)
         dx = -la.inv(aug_a) @ g
         if xtest(dx, x):
             info = 2
@@ -315,9 +315,9 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
             x0 = x
             chisq_old = chisq_new
             j, a, g = update(x0, f)
-            lam /= factor
+            mu /= factor
         else:
-            lam *= factor
+            mu *= factor
     else:
         # loop exited normally
         info = 5
@@ -426,16 +426,24 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
         .. versionadded:: 0.18
     kwargs
         Keyword arguments passed to `leastsq` for ``method='lm'`` or
-        `least_squares` otherwise."""
-    if method is None:
-        # default to scipy/minpack implementation.
-        method = "lm"
-        
-    if method in {'lm', 'trf', 'dogbox'}:
-        return scipy.optimize.curve_fit(f, xdata, ydata, p0, sigma, absolute_sigma,
-                  check_finite, bounds, method,
-                  jac, **kwargs)
-    elif method == "ls":
+        `least_squares` otherwise.""" 
+
+    # fix kwargs
+    return_full = kwargs.pop('full_output', False)
+    can_full_output = method not in {'trf', 'dogbox'} and np.array_equal(bounds, (-np.inf, np.inf))
+
+    if method in {'lm', 'trf', 'dogbox', None}:
+        if can_full_output:
+            kwargs['full_output'] = return_full
+            
+        res = scipy.optimize.curve_fit(f, xdata, ydata, p0, sigma, absolute_sigma,
+                  check_finite, bounds, method, jac, **kwargs)
+        if can_full_output:
+            return res
+        else:
+            return res[0], res[1], None, "No error", 1
+    
+    if method in {'ls', 'lm', 'trf', 'dogbox', None}:
         _wrap_func = _wrap_func_ls
         _wrap_jac = _wrap_jac_ls
     elif method == "mle":
@@ -474,8 +482,6 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
     elif jac is None and method != 'lm':
         jac = '2-point'
 
-    # Remove full_output from kwargs, otherwise we're passing it in twice.
-    return_full = kwargs.pop('full_output', False)
     res = lm(func, p0, Dfun=jac, full_output=1, method=method, **kwargs)
     popt, pcov, infodict, errmsg, info = res
     cost = np.sum(infodict['fvec'] ** 2)
