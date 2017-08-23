@@ -503,7 +503,6 @@ class Gauss2D(object):
             if fittype.lower() == 'mle':
                 meth = "mle"
             elif fittype.lower() == 'ls':
-                # use standard ls
                 # default to scipy
                 meth = None
             else:

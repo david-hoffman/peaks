@@ -285,34 +285,21 @@ class PeakFinder(object):
             i: self.data[slice_maker(y, x, window)]
             for i, (y, x, s, r) in enumerate(self.blobs)}, **kwargs)
 
-    def plot_labels(self, withfits=False, diameter=None, **kwargs):
-        '''
-        Generate a plot of the found peaks, individually
-        '''
+
+    def plot_fits(self, window_width, residuals=False, **kwargs):
+        """Generate a plot of the found peaks, individually"""
 
         # check if the fitting has been performed yet, warn user if it hasn't
-        if withfits:
-            if self._fits is None:
-                withfits = False
-                warnings.warn('Blobs have not been fit yet, cannot show fits',
-                              UserWarning)
-            else:
-                fits = self._fits
+        if self._fits is None:
+            raise RuntimeError('Blobs have not been fit yet, cannot show fits')
+        else:
+            fits = self._fits
 
         # pull the labels and the data from the object
-        labels = self._labels
         data = self.data
 
-        # check to see if data has been labelled or a diameter value is passed
-        if labels is None or diameter is not None:
-            labels = self.label_blobs(diameter=diameter)
-            if labels is None:
-                warnings.warn('Labels were not available', UserWarning)
-
-                return None
-
         # find objects from labelled data
-        my_objects = find_objects(labels)
+        my_objects = [slice_maker(y, x, window_width) for y, x in fits[["y0", "x0"]].values]
 
         # generate a nice layout
         nb_labels = len(my_objects)
@@ -324,18 +311,21 @@ class PeakFinder(object):
 
         for n, (obj, ax) in enumerate(zip(my_objects, axes.ravel())):
             ex = (obj[1].start, obj[1].stop - 1, obj[0].stop - 1, obj[0].start)
-            ax.matshow(data[obj], extent=ex, **kwargs)
             ax.set_title(n)
             ax.grid("off")
-            if withfits:
-                # generate the model fit to display, from parameters.
-                dict_params = dict(fits.loc[n].dropna())
 
-                # recenter
-                dict_params['x0'] -= obj[1].start
-                dict_params['y0'] -= obj[0].start
-                params = Gauss2D.dict_to_params(dict_params)
-                fake_data = Gauss2D.gen_model(data[obj], *params)
+            # generate the model fit to display, from parameters.
+            dict_params = dict(fits.loc[n].dropna())
+
+            # recenter
+            dict_params['x0'] -= obj[1].start
+            dict_params['y0'] -= obj[0].start
+            params = Gauss2D.dict_to_params(dict_params)
+            fake_data = Gauss2D.gen_model(data[obj], *params)
+            if residuals:
+                ax.matshow(data[obj] - fake_data, extent=ex, **kwargs)
+            else:
+                ax.matshow(data[obj], extent=ex, **kwargs)
                 ax.contour(fake_data, extent=ex, colors='w', origin='image')
 
         # # Remove empty plots
