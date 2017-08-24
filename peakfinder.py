@@ -28,7 +28,7 @@ from skimage._shared.utils import assert_nD
 from scipy.ndimage import gaussian_filter, median_filter, uniform_filter1d
 from scipy.ndimage.measurements import label, find_objects
 # import our 2D gaussian fitting class
-from .gauss2d import Gauss2D
+from .gauss2d import Gauss2D, Gauss2Dz
 # plotting
 from dphplotting import display_grid
 # specialty numpy and scipy imports
@@ -350,9 +350,8 @@ class PeakFinder(object):
 
         return self.blobs
 
-    def fit_blobs(self, width=10, **kwargs):
+    def fit_blobs(self, width=10, poly_coefs_df=None, **kwargs):
         """Fit blobs to Gaussian funtion.
-
         Parameters
         ----------
         width : int
@@ -370,7 +369,10 @@ class PeakFinder(object):
             # make a fit window
             win = slice_maker(int(y), int(x), width)
             # make a fit object with a subset of the data
-            mypeak = Gauss2D(self.data[win])
+            if poly_coefs_df is None:
+                mypeak = Gauss2D(self.data[win])
+            else:
+                mypeak = Gauss2Dz(self.data[win], poly_coefs_df)
             # optimize params
             mypeak.optimize_params(**kwargs)
             fit_coefs = mypeak.all_params_dict()
