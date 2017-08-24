@@ -188,11 +188,15 @@ def gauss_fit(xdata, ydata, withoffset=True, trim=None, guess_z=None):
             popt, pcov = curve_fit(gauss, xdata, ydata, p0=p0)
         else:
             popt, pcov = curve_fit(gauss_no_offset, xdata, ydata, p0=p0[:3])
-            popt = np.insert(popt, 3, offset)
+            popt = np.insert(popt, 3, 0)
+            temp_pcov = np.zeros((4,4))
+            temp_pcov[:3, :3] = pcov
+            pcov = temp_pcov
     except RuntimeError:
         popt = p0 * np.nan
+        pcov = popt.T @ popt
     # return result
-    return popt
+    return popt, pcov
 
 
 def sine(xdata, amp, freq, phase, offset):

@@ -15,7 +15,7 @@ from matplotlib import pyplot as plt
 from matplotlib.colors import ColorConverter
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
-from .utils import gauss_fit, sine, sine_jac, scatterplot, sine2, sine_fit
+from .utils import gauss_fit, sine, sine_jac, scatterplot, sine2, sine_fit, gauss
 from scipy.fftpack import fft
 from dphutils import slice_maker
 from dphplotting import make_grid, clean_grid
@@ -205,14 +205,15 @@ class PSFStackAnalyzer(StackAnalyzer):
         # and finds the slice with the max value before finding peaks.
 
     def fitPeaks(self, fitwidth, nproc=1, **kwargs):
-        super().fitPeaks(fitwidth, nproc, par_func=_fitPeaks_psf, **kwargs)
+        return super().fitPeaks(fitwidth, nproc, par_func=_fitPeaks_psf, **kwargs)
 
     def calc_psf_params(self, nproc=0, subrange=slice(None, None, None),
                         **kwargs):
         """Calculate the PSF paramters for all found peaks"""
         params = super()._calc_params(nproc=nproc, par_func=_calc_psf_param,
                                       subrange=subrange, **kwargs)
-        self.psf_params = pd.DataFrame(params)
+        self.psf_params = pd.DataFrame(params).set_index("peak_num")
+        return self.psf_params
 
     def plot_psf_params(self, feature='z0', **kwargs):
         psf_params = self.psf_params
@@ -220,6 +221,41 @@ class PSFStackAnalyzer(StackAnalyzer):
                               psf_params.x0.values, **kwargs)
         ax.set_title(feature)
         return fig, ax
+
+    def diagnostic_fits(self, num=9, trim=None):
+        """Diagnostic, to check if sine fits are good
+        check best and worst SNR"""
+        # sort sim_params by SNR
+        psf_params = self.psf_params.sort_values("SNR")
+        # take the top and bottom
+        top_half = num // 2
+        bot_half = num - top_half
+        to_plot = pd.concat((psf_params.iloc[:bot_half],
+                             psf_params.iloc[-top_half:]))
+        # pull internal fits for later use
+        fits = self.fits
+        # make a grid axes
+        fig, axs = make_grid(len(to_plot))
+        # loop through chosen ones
+        for (peak, params), ax in zip(to_plot.iterrows(), axs.ravel()):
+            # pull the amplitudes and plot
+            f = fits[peak]
+            amp = f.amp
+            ax.plot(amp, "o")
+            # calculate the fit function and display
+            x = np.linspace(f.index.min(), f.index.max())
+            gauss_fit = gauss(x, params.amp, params.z0, params.sigma_z,
+                                params.offset)
+            ax.plot(x, gauss_fit)
+            if trim:
+                ax.axvline(params.z0 + trim * params.sigma_z, c="r", ls="--")
+                ax.axvline(params.z0 - trim * params.sigma_z, c="r", ls="--")
+            # place a title with both SNRs
+            ax.set_title("SNR={:.0f}, loc={}".format(params.SNR, peak))
+        # make the layout tight and return
+        fig.tight_layout()
+        fig, axs = clean_grid(fig, axs)
+        return fig, axs
 
 
 class SIMStackAnalyzer(StackAnalyzer):
@@ -314,6 +350,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         sim_params = pd.DataFrame(list(itt.chain.from_iterable(params)))
         if len(sim_params):
             self.sim_params = sim_params.set_index(["peak_num", "orientation"])
+        return self.sim_params
 
     def plot_sim_params(self, orientations=None, **kwargs):
         """Make maps of the modulation depths"""
@@ -759,11 +796,12 @@ def _calc_psf_param(fit, subrange=slice(None, None, None), **kwargs):
     # need to make this robust to different fitting models.
 
     # do the fit to a gaussian
-    popt = gauss_fit(z, tempfit.amp, **kwargs)
+    popt, pcov = gauss_fit(z, tempfit.amp, **kwargs)
 
     # if the fit has not failed proceed
     if np.isfinite(popt).all():
         # pull fit parameters
+        keys = ("amp", "z0", "sigma_z", "offset")
         famp, z0, sigma_z, offset = popt
 
         # interpolate other values (linear only)
@@ -773,15 +811,12 @@ def _calc_psf_param(fit, subrange=slice(None, None, None), **kwargs):
         # sigma_y = np.interp(z0, z, s_y)
         result = {k: np.interp(z0, z, tempfit[k]) for k in tempfit}
 
-        noise = tempfit.noise.mean()
-        # form a dictionary for easy DataFrame creation.
-        fit_result = {
-            'amp': famp,
-            'z0': z0,
-            'sigma_z': abs(sigma_z),
-            'SNR': famp / noise
-        }
-        result.update(fit_result)
+        noise = (tempfit.amp - gauss(z, *popt)).std()
+        # add params
+        result.update(dict(zip(keys, popt)))
+        # add errors
+        result.update({k + "_e": v for k, v in zip(keys, np.diag(pcov))})
+        result["SNR"] = famp / noise
     else:
         result = None
     return result
