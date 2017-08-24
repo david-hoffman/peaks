@@ -23,7 +23,7 @@ from skimage.measure import moments
 # need basic curve fitting
 from scipy.optimize import OptimizeWarning
 # need to detrend data before estimating parameters
-from .utils import detrend
+from .utils import detrend, find_real_root_near_zero
 from .lm import curve_fit
 
 # Eventually we'll want to abstract the useful, abstract bits of this
@@ -552,10 +552,10 @@ class Gauss2D(object):
         # if the error flag is good, proceed
         if self.ier in [1, 2, 3, 4]:
             # make sure sigmas are positive
-            if popt.size > 5:
-                popt[3:5] = abs(popt[3:5])
-            else:
-                popt[3] = abs(popt[3])
+            # if popt.size > 5:
+            #     popt[3:5] = abs(popt[3:5])
+            # else:
+            #     popt[3] = abs(popt[3])
             self._popt = popt
             self._pcov = pcov
         else:
@@ -795,6 +795,267 @@ class Gauss2D(object):
         True
         """
         return self._params_dict(self.guess_params)
+
+
+class Gauss2Dz(Gauss2D):
+    """
+    A class that encapsulates experimental data that is best modeled by a 2D
+    gaussian peak. It can estimate model parameters and perform a fit to the
+    data. Best fit parameters are stored in a dictionary that can be accessed
+    by helper functions.
+
+    Right now the class assumes that `data` has constant spacing
+    """
+
+    def __init__(self, data, poly_coefs_df):
+        """
+        Holds experimental equi-spaced 2D-data best represented by a Gaussian
+
+        Parameters
+        ----------
+        data : array_like
+            An array holding the experimental data, for now data is assumed to
+            have equal spacing
+        poly_coefs_df : pd.DataFrame
+            A data frame holding the coefficients of polynomials
+
+        Returns
+        -------
+        out : object
+            A Gauss2D object holding the specified data. All other internal
+            variables are internalized to `None`
+        """
+
+        # Note that we are only passing a reference to the original data here
+        # so DO NOT modify this field
+        super().__init__(data)
+
+        # set up polynomial functions for relating z to sigmax and y
+        self.sigma_x_poly = np.poly1d(poly_coefs_df.sigma_x)
+        self.sigma_y_poly = np.poly1d(poly_coefs_df.sigma_y)
+        # we need their derivatives too for the jacobian
+        self.sigma_x_polyd = self.sigma_x_poly.deriv()
+        self.sigma_y_polyd = self.sigma_y_poly.deriv()
+
+
+    @property
+    def fit_model(self):
+        yy, xx = np.indices(self.data.shape)
+        xdata_tuple = (xx, yy)
+        # return model
+        return self.model(xdata_tuple, *self._popt)
+
+    def model(self, xdata_tuple, amp, x0, y0, z0, offset):
+        """
+        Chooses the correct model function to use based on the number of
+        arguments passed to it
+
+        Parameters
+        ----------
+        xdata_tuple : tuple of ndarrays (xx, yy)
+            The independent data
+
+        Returns
+        -------
+        modeldata :
+
+        Other Parameters
+        ----------------
+        *args : model parameters
+        """
+        args = amp, x0, y0, self.sigma_x_poly(z0), self.sigma_y_poly(z0), offset
+        return self.gauss2D_norot(xdata_tuple, *args)
+
+    def model_jac(self, xdata_tuple, *params):
+        """Chooses the correct model jacobian function to use based on the
+        number of arguments passed to it
+
+        Parameters
+        ----------
+        xdata_tuple : tuple of ndarrays (xx, yy)
+            The independent data
+
+        Returns
+        -------
+        modeldata :
+
+        Other Parameters
+        ----------------
+        *args : model parameters
+        """
+        x = xdata_tuple[0].ravel()
+        y = xdata_tuple[1].ravel()
+        
+        amp, x0, y0, z0, offset = params
+        sigma_x, sigma_y = self.sigma_x_poly(z0), self.sigma_y_poly(z0)
+        sigma_xd, sigma_yd = self.sigma_x_polyd(z0), self.sigma_y_polyd(z0)
+        
+        value = self.model(xdata_tuple, *params).ravel() - offset
+        dydamp = value / amp
+        
+        dydx0 = value * (x - x0) / sigma_x**2
+        dydsigmax = value * (x - x0)**2 / sigma_x**3
+        
+        dydy0 = value * (y - y0) / sigma_y**2
+        dydsigmay = value * (y - y0)**2 / sigma_y**3
+        
+        dydz0 = dydsigmax * sigma_xd + dydsigmay * sigma_yd
+        
+        return np.vstack((dydamp, dydx0, dydy0, dydz0, np.ones_like(value))).T
+        # the below works, but speed up only for above
+        # new_params = np.insert(params, 5, 0)
+        # return np.delete(cls.gauss2D_jac(new_params, xdata), 5, axis=0)
+
+    def area(self, **kwargs):
+        raise NotImplementedError
+
+    def optimize_params(self, guess_params=None, modeltype='norot',
+                        quiet=False, bounds=None, checkparams=True,
+                        detrenddata=False, fittype='ls'):
+
+        # Test if we've been provided guess parameters
+        # Need to test if the variable is good or not.
+
+        if guess_params is None:
+            # if not we generate them
+            guess_params = self.estimate_params(detrenddata=detrenddata)
+
+        # handle the case where the user passes a dictionary of values.
+        if isinstance(guess_params, dict):
+            guess_params = self.dict_to_params(guess_params)
+
+        return super().optimize_params(guess_params=guess_params,
+                        quiet=quiet, bounds=bounds, checkparams=checkparams,
+                        detrenddata=detrenddata, fittype=fittype)
+
+    optimize_params.__doc__ = Gauss2D.optimize_params.__doc__
+
+    def _check_params(self, popt):
+        """
+        A method that checks if optimized parameters are valid
+        and sets the fit flag
+        """
+        data = self.data
+        # check to see if the amplitude makes sense
+        # it must be greater than 0 but it can't be too much larger than the
+        # entire range of data values
+        if not (0 < popt[0] < (data.max() - data.min()) * 5):
+            self.errmsg = ("Amplitude unphysical, amp = {:.3f},"
+                           " data range = {:.3f}")
+            # cast to float to avoid memmap problems
+            self.errmsg = self.errmsg.format(popt[0],
+                                             np.float(data.max() - data.min()))
+            self.ier = 11
+
+    def estimate_params(self, detrenddata=False):
+        """
+        Estimate the parameters that best model the data using it's moments
+
+        Parameters
+        ----------
+        detrenddata : bool
+            a keyword that determines whether data should be detrended first.
+            Detrending takes *much* longer than not. Probably only useful for
+            large fields of view.
+
+        Returns
+        -------
+        params : array_like
+            params[0] = amp
+            params[1] = x0
+            params[2] = y0
+            params[3] = z0
+            params[4] = offset
+
+        Notes
+        -----
+        Bias is removed from data using detrend in the util module.
+        """
+        gauss2d_params = super().estimate_params(detrenddata)
+
+        amp, x0, y0, sigma_x, sigma_y, rho, offset = gauss2d_params
+
+        # find z estimates based on sigmas
+        zx = find_real_root_near_zero(self.sigma_x_poly - sigma_x)
+        zy = find_real_root_near_zero(self.sigma_y_poly - sigma_y)
+
+        # choose the estimate closest to zero.
+        if abs(zx) < abs(zy):
+            z0 = zx
+        else:
+            z0 = zy
+        # save estimate for later use
+        params = self._guess_params = np.array([amp, x0, y0, z0, offset])
+        # return parameters to the caller as a `copy`, we don't want them to
+        # change the internal state
+        return params.copy()
+
+    @classmethod
+    def _params_dict(cls, params):
+        """
+        Helper function to return a version of params in dictionary form to
+        make the user interface a little more friendly
+
+        Examples
+        --------
+        >>> Gauss2D._params_dict((1, 2, 3, 4, 5, 6, 7)) == {
+        ...     'amp': 1,
+        ...     'x0': 2,
+        ...     'y0': 3,
+        ...     'sigma_x': 4,
+        ...     'sigma_y': 5,
+        ...     'rho': 6,
+        ...     'offset': 7}
+        True
+        """
+
+        keys = ['amp', 'x0', 'y0', 'z0', 'offset']
+
+        return {k: p for k, p in zip(keys, params)}
+
+    def params_errors_dict(self):
+        """Return a dictionary of errors"""
+
+        keys = [
+            'amp_e',
+            'x0_e',
+            'y0_e',
+            'z0_e',
+            'offset_e'
+        ]
+
+        # pull the variances of the parameters from the covariance matrix
+        # take the sqrt to get the errors
+        with np.errstate(invalid="ignore"):
+            params = np.sqrt(np.diag(self.pcov))
+
+        return {k: p for k, p in zip(keys, params)}
+
+    @classmethod
+    def dict_to_params(cls, d):
+        """
+        Helper function to return a version of params in dictionary form
+        to make the user interface a little more friendly
+
+        >>> Gauss2D.dict_to_params({
+        ...     'amp': 1,
+        ...     'x0': 2,
+        ...     'y0': 3,
+        ...     'sigma_x': 4,
+        ...     'sigma_y': 5,
+        ...     'rho': 6,
+        ...     'offset': 7})
+        array([1, 2, 3, 4, 5, 6, 7])
+        """
+        keys = ['amp', 'x0', 'y0', 'z0', 'offset']
+        values = []
+        for k in keys:
+            try:
+                values.append(d[k])
+            except KeyError:
+                pass
+
+        return np.array(values)
 
 
 if __name__ == '__main__':

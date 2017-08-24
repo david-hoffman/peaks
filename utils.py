@@ -361,3 +361,30 @@ def scatterplot(z, y, x, ax=None, fig=None, cmap="plasma", **kwargs):
     color_axis = the_divider.append_axes("right", size="5%", pad=0.1)
     plt.colorbar(s, cax=color_axis)
     return fig, ax
+
+
+def find_real_roots_near_zero(poly):
+    """given a polynomial find the two real roots on either side
+    of zero"""
+    # convert array-like to poly
+    poly = np.poly1d(poly)
+    r = poly.roots
+    r = r[~np.iscomplex(r)].real
+    r.sort()
+    i = np.abs(r).argmin()
+    r1 = r[i]
+    if r1 < 0:
+        return r[i:i + 2]
+    else:
+        return r[i - 1:i + 1]
+
+def find_real_root_near_zero(poly):
+    """given a polynomial find the two real roots on either side
+    of zero"""
+    # convert array-like to poly
+    poly = np.poly1d(poly)
+    r = poly.roots
+    r = r[~np.iscomplex(r)].real
+    r.sort()
+    i = np.abs(r).argmin()
+    return r[i]
