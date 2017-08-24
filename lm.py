@@ -295,7 +295,11 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
             break
         # calculate proposed step
         aug_a = a + np.diag(np.ones_like(g) * mu)
-        dx = -la.inv(aug_a) @ g
+        try:
+            dx = -la.inv(aug_a) @ g
+        except la.LinAlgError:
+            mu *= factor
+            continue
         if xtest(dx, x):
             info = 2
             break
