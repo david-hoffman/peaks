@@ -82,10 +82,12 @@ def _update_mle(x0, f, Dfun):
 
 def _wrap_func_mle(func, xdata, ydata, transform):
     """Returns f and xdata"""
+    # add non-negativity constraint to data
+    ydata_nn = np.maximum(ydata, 0)
     if transform is None:
         def func_wrapped(params):
             # return function and data
-            return func(xdata, *params), ydata
+            return func(xdata, *params), ydata_nn
     elif transform.ndim == 1:
         raise NotImplementedError
     else:
