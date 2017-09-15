@@ -978,12 +978,14 @@ class Gauss2Dz(Gauss2D):
         # find z estimates based on sigmas
         zx = find_real_root_near_zero(self.sigma_x_poly - sigma_x)
         zy = find_real_root_near_zero(self.sigma_y_poly - sigma_y)
-
+        possible_z = np.array((zx, zy))
+        # remove nans
+        possible_z = possible_z[np.isfinite(possible_z)]
         # choose the estimate closest to zero.
-        if abs(zx) < abs(zy):
-            z0 = zx
+        if len(possible_z):
+            z0 = possible_z[np.abs(possible_z).argmin()]
         else:
-            z0 = zy
+            z0 = 0
         # save estimate for later use
         params = self._guess_params = np.array([amp, x0, y0, z0, offset])
         # return parameters to the caller as a `copy`, we don't want them to
