@@ -370,6 +370,8 @@ def find_real_roots_near_zero(poly):
     poly = np.poly1d(poly)
     r = poly.roots
     r = r[~np.iscomplex(r)].real
+    if len(r) == 0:
+        return np.nan
     r.sort()
     i = np.abs(r).argmin()
     r1 = r[i]
@@ -378,6 +380,7 @@ def find_real_roots_near_zero(poly):
     else:
         return r[i - 1:i + 1]
 
+
 def find_real_root_near_zero(poly):
     """given a polynomial find the two real roots on either side
     of zero"""
@@ -385,6 +388,8 @@ def find_real_root_near_zero(poly):
     poly = np.poly1d(poly)
     r = poly.roots
     r = r[~np.iscomplex(r)].real
+    if len(r) == 0:
+        return np.nan
     r.sort()
     i = np.abs(r).argmin()
     return r[i]
