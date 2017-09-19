@@ -298,7 +298,9 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
         # calculate proposed step
         aug_a = a + np.diag(np.ones_like(g) * mu)
         try:
-            dx = -la.inv(aug_a) @ g
+            # https://software.intel.com/en-us/mkl-developer-reference-fortran-matrix-inversion-lapack-computational-routines
+            # dx = -la.inv(aug_a) @ g
+            dx = la.solve(aug_a, -g)
         except la.LinAlgError:
             mu *= factor
             continue
