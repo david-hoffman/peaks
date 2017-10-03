@@ -25,7 +25,7 @@ from skimage.util import img_as_float
 from skimage.feature.peak import peak_local_max
 from skimage._shared.utils import assert_nD
 # ndimage imports
-from scipy.ndimage import gaussian_filter, median_filter, uniform_filter1d
+from scipy.ndimage import gaussian_filter, median_filter, uniform_filter1d, maximum_filter, minimum_filter
 from scipy.ndimage.measurements import label, find_objects
 # import our 2D gaussian fitting class
 from .gauss2d import Gauss2D, Gauss2Dz
@@ -34,7 +34,7 @@ from dphplotting import display_grid
 # specialty numpy and scipy imports
 from scipy.signal import argrelmax
 from scipy.spatial import cKDTree
-from dphutils import fft_gaussian_filter, slice_maker
+from dphutils import fft_gaussian_filter, slice_maker, mode
 
 
 class PeakFinder(object):
@@ -177,7 +177,7 @@ class PeakFinder(object):
                 # choose center of bin, not edges
                 self.thresh = (bins[maxval] + bins[maxval + 1]) / 2
             elif np.issubdtype(self.data.dtype, np.unsignedinteger):
-                self.thresh = np.bincount(self.data.ravel()).argmax()
+                self.thresh = mode(self.data)
             else:
                 raise TypeError("Invalid type for method 'mode' {}".format(self.data.dtype))
         else:
@@ -219,7 +219,7 @@ class PeakFinder(object):
             # space i.e. the threshold is not intuitively clear.
             blobs = better_blob_dog(data, **default_kwargs)
         else:
-            blobs = None
+            raise NotImplementedError
 
         # if no peaks found alert the user, but don't break their program
         if blobs is None or len(blobs) == 0:
@@ -229,13 +229,16 @@ class PeakFinder(object):
             # blobs, as returned, has the third index as the estimated width
             # for our application it will be beneficial to have the intensity
             # at the estimated center as well
-            def amp(data, y, x, s):
-                """get the amp by estimating max - min"""
-                d = self.data[slice_maker(y, x, s * 2)]
-                return d.max() - d.min()
 
-            blobs = np.array([[y, x, s, amp(self.data, y, x, s)]
-                              for y, x, s in blobs])
+            footprint = np.round(self.blob_sigma * 5)
+            max_img = maximum_filter(self.data, footprint)
+            # we just use mode, faster and more accurate for low
+            # background images.
+            diff_img = max_img.astype(int) - mode(self.data)
+
+            y, x, s = blobs.T
+
+            blobs = np.vstack((y, x, s, diff_img[y.astype(int), x.astype(int)])).T
 
             # sort blobs by the max amp value, descending
             blobs = blobs[blobs[:, 3].argsort()][::-1]
