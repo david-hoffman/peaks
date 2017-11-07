@@ -234,7 +234,7 @@ class PeakFinder(object):
             max_img = maximum_filter(self.data, footprint)
             # we just use mode, faster and more accurate for low
             # background images.
-            diff_img = max_img.astype(int) - mode(self.data)
+            diff_img = max_img - mode(self.data.astype(int))
 
             y, x, s = blobs.T
 
