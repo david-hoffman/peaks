@@ -560,7 +560,7 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
 
         # make the slice
         try:
-            myslice = slice_maker(y0, x0, width)
+            myslice = slice_maker((y0, x0), width)
         except RuntimeError as e:
             print('Fit window moved to edge of ROI')
             break
@@ -630,7 +630,7 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
     # unpack peak variables
     y, x, w, amp = blob
     # make the slice around the blob
-    myslice = slice_maker(y, x, fitwidth)
+    myslice = slice_maker((y, x), fitwidth)
     # find the start
     ystart = myslice[0].start
     xstart = myslice[1].start
@@ -719,7 +719,7 @@ def _fitPeaks_sim(fitwidth, blob, stack, **kwargs):
     y, x, w, amp = blob
 
     # generate a slice
-    myslice = slice_maker(y, x, fitwidth)
+    myslice = slice_maker((y, x), fitwidth)
 
     # save the upper left coordinates for later use
     ystart = myslice[0].start

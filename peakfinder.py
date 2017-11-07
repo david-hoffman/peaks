@@ -285,7 +285,7 @@ class PeakFinder(object):
     def plot_blob_grid(self, window=11, **kwargs):
         """Display a grid of blobs"""
         return display_grid({
-            i: self.data[slice_maker(y, x, window)]
+            i: self.data[slice_maker((y, x), window)]
             for i, (y, x, s, r) in enumerate(self.blobs)}, **kwargs)
 
 
@@ -302,7 +302,7 @@ class PeakFinder(object):
         data = self.data
 
         # find objects from labelled data
-        my_objects = [slice_maker(y, x, window_width) for y, x in fits[["y0", "x0"]].values]
+        my_objects = [slice_maker(center, window_width) for center in fits[["y0", "x0"]].values]
 
         # generate a nice layout
         nb_labels = len(my_objects)
@@ -370,7 +370,7 @@ class PeakFinder(object):
         # iterate through blobs
         for y, x, s, r in self.blobs:
             # make a fit window
-            win = slice_maker(int(y), int(x), width)
+            win = slice_maker((int(y), int(x)), width)
             # make a fit object with a subset of the data
             if poly_coefs_df is None:
                 mypeak = Gauss2D(self.data[win])
