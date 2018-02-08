@@ -32,6 +32,9 @@ except ImportError:
 # functionality from gauss2d into a parent class that can be subclassed for
 # each type of peak. Hopefully regardless of dimensionality.
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class StackAnalyzer(object):
     """
@@ -87,7 +90,7 @@ class StackAnalyzer(object):
             with mp.Pool(nproc, _init_func,
                          (par_func, shared_array_base, self.stack.shape)) as p:
                 if not quiet:
-                    print('Multiprocessing engaged with {} cores'.format(nproc))
+                    logger.debug('Multiprocessing engaged with {} cores'.format(nproc))
                 # farm out the tasks
                 results = [p.apply_async(
                     par_func,
@@ -125,7 +128,7 @@ class StackAnalyzer(object):
             # spin up the pool of workers
             with mp.Pool(nproc) as p:
                 if not quiet:
-                    print('Multiprocessing engaged with {} cores'.format(nproc))
+                    logger.debug('Multiprocessing engaged with {} cores'.format(nproc))
                 # farm out the tasks, because we're using module level
                 # functions instead of class methods we avoid pickling
                 # too much data.
@@ -562,7 +565,7 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
         try:
             myslice = slice_maker((y0, x0), width)
         except RuntimeError as e:
-            print('Fit window moved to edge of ROI')
+            logger.warning('Fit window moved to edge of ROI')
             break
         else:
             # pull the starting values from it
@@ -576,7 +579,7 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
             sub_stack = stack[myslice]
             if sub_stack.size == 0:
                 # the fir window has moved to the edge, break
-                print('Fit window moved to edge of ROI')
+                logger.warning('Fit window moved to edge of ROI')
                 break
             fit = Gauss2D(sub_stack)
 
@@ -642,8 +645,8 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
     # find the max slice!
     # this could still get messed up by salt and pepper noise.
     # my_max = np.unravel_index(substack.argmax(), substack.shape)
-    # use the sum of each z-slice
-    my_max = substack.sum((1, 2)).argmax()
+    # use the range of each z-slice as an indication of intensity
+    my_max = (substack.max((1, 2)) - substack.min((1, 2))).argmax()
     # now change my slice to be that zslice
     myslice[0] = my_max
     substack = stack[myslice]
@@ -686,7 +689,7 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
 
         return peakfits_df.set_index('slice').sort_index()
     else:
-        print('blob {} is unfittable'.format(blob))
+        logger.warning('blob {} is unfittable'.format(blob))
         return None
 
 
