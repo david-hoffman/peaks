@@ -31,6 +31,9 @@ from .lm import curve_fit
 # of fits
 # rho = cos(theta)
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 class Gauss2D(object):
     """
@@ -560,7 +563,7 @@ class Gauss2D(object):
             self._pcov = pcov
         else:
             if not quiet:
-                print('Fitting error: ' + self.errmsg)
+                logger.warning('Fitting error: ' + self.errmsg)
 
             self._popt = guess_params * np.nan
             self._pcov = np.zeros((len(guess_params),
