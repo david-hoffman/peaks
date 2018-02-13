@@ -474,7 +474,8 @@ class PeakFinder(object):
                 (distance < blob[1] < xmax - distance))
         ])
         # resort the blobs, largest to smallest
-        my_blobs = my_blobs[my_blobs[:, 3].argsort()]
+        if len(my_blobs) > 0:
+            my_blobs = my_blobs[my_blobs[:, 3].argsort()]
         # set the internals and return them
         self._blobs = my_blobs
         return my_blobs
