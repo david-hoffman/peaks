@@ -791,6 +791,7 @@ def _calc_psf_param(fit, subrange=slice(None, None, None), **kwargs):
     # pull values from DataFrame
     tempfit = fit.dropna().loc[subrange]
     if len(tempfit) < 4:
+        logger.warning("Not enough points to fit in _calc_psf_param")
         return None
     z = tempfit.index.values
     # amp, x, y, s_x, s_y = tempfit[

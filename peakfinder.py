@@ -288,7 +288,6 @@ class PeakFinder(object):
             i: self.data[slice_maker((y, x), window)]
             for i, (y, x, s, r) in enumerate(self.blobs)}, **kwargs)
 
-
     def plot_fits(self, window_width, residuals=False, **kwargs):
         """Generate a plot of the found peaks, individually"""
 
@@ -512,7 +511,7 @@ class PeakFinder(object):
             c = plt.Circle((x, y), radius=diameter / 2, color='r', linewidth=1,
                            fill=False)
             ax.add_patch(c)
-            if self.data.dtype != float:
+            if not np.issubdtype(float, self.data.dtype):
                 r = int(r)
                 fmtstr = '{}'
             else:
