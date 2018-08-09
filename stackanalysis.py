@@ -63,7 +63,7 @@ class StackAnalyzer(object):
         fitwidth : int
             Sets the size of the fitting window
         nproc : int
-            number of processors to use
+            number of processors to use, -1 will use all available.
 
         Returns
         -------
@@ -73,10 +73,12 @@ class StackAnalyzer(object):
         """
         blobs = self.peakfinder.blobs
 
+        # make sure we don't try to use more processors than we have
+        # if user gives -1 use all cpus
+        if nproc > os.cpu_count() or nproc < 0:
+            nproc = os.cpu_count()
+
         if nproc > 1:
-            # make sure we don't try to use more processors than we have
-            if nproc > os.cpu_count():
-                nproc = os.cpu_count()
             # save the data type character
             dtype_char = self.stack.dtype.char
             # allocate shared memory for the array
@@ -573,7 +575,7 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
             xstart = myslice[1].start
 
             # insert the z-slice number
-            myslice.insert(0, s)
+            myslice = (s, ) + myslice
 
             # set up the fit and perform it using last best params
             sub_stack = stack[myslice]
@@ -638,7 +640,7 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
     ystart = myslice[0].start
     xstart = myslice[1].start
     # insert the equivalent of `:` at the beginning
-    myslice.insert(0, slice(None, None, None))
+    myslice = (slice(None, None, None), ) + myslice
     # make the substack
     substack = stack[myslice]
     # we could do median filtering on the substack before attempting to
@@ -648,7 +650,7 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
     # use the range of each z-slice as an indication of intensity
     my_max = (substack.max((1, 2)) - substack.min((1, 2))).argmax()
     # now change my slice to be that zslice
-    myslice[0] = my_max
+    myslice = (my_max, ) + myslice[1:]
     substack = stack[myslice]
     # prep our container
     peakfits = []
@@ -729,7 +731,7 @@ def _fitPeaks_sim(fitwidth, blob, stack, **kwargs):
     xstart = myslice[1].start
 
     # insert the equivalent of `:` at the beginning
-    myslice.insert(0, slice(None, None, None))
+    myslice = (slice(None, None, None), ) + myslice
 
     # pull the substack
     substack = stack[myslice]
