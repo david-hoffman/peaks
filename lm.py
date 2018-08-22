@@ -20,6 +20,9 @@ Copyright (c) 2017, David Hoffman
 import numpy as np
 from numpy import linalg as la
 import scipy.optimize
+import logging
+
+logger = logging.getLogger()
 
 
 def _chi2_ls(f):
@@ -52,15 +55,22 @@ def _chi2_mle(f):
     Minimizing this will maximize the likelihood for a data
     model with gaussian deviates."""
     f, y = f
-    if f.min() <= 0:
-        # this is not allowed so make chi2
-        # large to avoid
+    if f.min() < 0:
+        logger.info("function has dropped below zero {}, this shouldn't happen".format(f.min()))
         return np.inf
-    part1 = (f - y).sum(0)
+
     # don't include points where the data is less
     # than zero as this isn't allowed.
-    with np.errstate(divide="ignore", invalid="ignore"):
-        part2 = - (y * np.log(f / y))[y > 0].sum(0)
+
+    # calculate the parts of chi2
+    part1 = (f - y).sum(0)
+    
+    # make sure to change nans and infs to nums
+    with np.errstate(invalid="ignore"):
+        part2 = - (y * np.log(f / y))
+    part2[~np.isfinite(part2)] = 0.0
+    part2 = part2.sum(0)
+
     return part1 + part2
 
 
@@ -69,25 +79,50 @@ def _update_mle(x0, f, Dfun):
     # calculate the jacobian
     # j shape (ndata, nparams)
     f, y = f
-    y_f = y / f
+    with np.errstate(invalid="ignore"):
+        y_f = y / f
+        y_f2 = y_f / f
+
+    # make sure we have finite results.
+    # any errors here are divide by zero problems
+    valid_points = np.isfinite(y_f2) & np.isfinite(y_f)
+    y_f[~valid_points] = 0
+    y_f2[~valid_points] = 0
+    
     j = Dfun(x0)
     # calculate the linear term of Hessian
     # a shape (nparams, nparams)
-    a = ((j.T * (y_f / f)) @ j)
+    a = (j.T * y_f2) @ j
     # calculate the gradient
     # g shape (nparams,)
     g = j.T @ (1 - y_f)
     return j, a, g
 
 
+def _ensure_positive(data):
+    """Make sure data is positive and has no zeros
+
+    For numerical stability
+
+    If we realize that mutating data is not a problem
+    and that changing in place could lead to signifcant
+    speed ups we can lose the data.copy() line"""
+    # make a copy of the data
+    data = data.copy()
+    data[data <= 0] = 0
+    return data
+
+
 def _wrap_func_mle(func, xdata, ydata, transform):
-    """Returns f and xdata"""
+    """Returns f and xdata
+
+    This is the cost function as defined by Transtrum and Sethna"""
     # add non-negativity constraint to data
-    ydata_nn = np.maximum(ydata, 0)
+    ydata_nn = _ensure_positive(ydata)
     if transform is None:
         def func_wrapped(params):
             # return function and data
-            return func(xdata, *params), ydata_nn
+            return _ensure_positive(func(xdata, *params)), ydata_nn
     elif transform.ndim == 1:
         raise NotImplementedError
     else:
@@ -115,6 +150,7 @@ def _wrap_jac_mle(jac, xdata, transform):
 
 
 def _wrap_func_ls(func, xdata, ydata, transform):
+    """This is the cost function as defined by Transtrum and Sethna"""
     if transform is None:
         def func_wrapped(params):
             return func(xdata, *params) - ydata
@@ -148,9 +184,22 @@ def _wrap_jac_ls(jac, xdata, transform):
     return jac_wrapped
 
 
+def make_lambda(j, d0):
+    """Make the diagonal matrix which takes care of scaling
+
+    according to J. J. Moré's paper"""
+    # Calculate the norm of the jacobian columns
+    ds = la.norm(j, axis=0)
+    ds[0] = d0
+    # return an increasing diagnonal matrix
+
+    return np.diag([max(ds[i], ds[i - 1]) for i in range(1, len(ds))])
+
+
 def lm(func, x0, args=(), Dfun=None, full_output=False,
             col_deriv=True, ftol=1.49012e-8, xtol=1.49012e-8,
-            gtol=0.0, maxfev=None, epsfcn=None, factor=100, diag=None, method="ls"):
+            gtol=0.0, maxfev=None, epsfcn=None, factor=100, diag=None,
+            method="ls"):
     """A more thorough implementation of levenburg-marquet
     for gaussian Noise
     ::
@@ -226,9 +275,9 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
     # this is stolen from scipy.leastsq so it isn't fully implemented
     errors = {0: ["Improper input parameters.", TypeError],
               1: ["Both actual and predicted relative reductions "
-                  "in the sum of squares\n  are at most %f" % ftol, None],
+                  "in the sum of squares are at most {}".format(ftol), None],
               2: ["The relative error between two consecutive "
-                  "iterates is at most %f" % xtol, None],
+                  "iterates is at most {}".format(xtol), None],
               3: ["Both actual and predicted relative reductions in "
                   "the sum of squares\n  are at most %f and the "
                   "relative error between two consecutive "
@@ -258,74 +307,119 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
             return np.abs(g).max() <= gtol
         else:
             return False
+
     def xtest(dx, x):
         """see if the parameters have converged"""
         return la.norm(dx) <= xtol * (la.norm(x) + xtol)
-    
+
     # set up update and chi2 for use
     if method == "ls":
         def update(x0, f):
             return _update_ls(x0, f, Dfun)
-        
+
         def chi2(f):
             return _chi2_ls(f)
 
     elif method == "mle":
         def update(x0, f):
             return _update_mle(x0, f, Dfun)
-        
+
         def chi2(f):
             return _chi2_mle(f)
+
     else:
         raise TypeError("Method {} not recognized".format(method))
 
     # get initial function, jacobian, hessian and gradient
     f = func(x0)
+    # j is Jacobian, a is J.T @ J, g is J.T @ f
     j, a, g = update(x0, f)
-    
+    # initialize D.T @ D array
+    dtd = np.diag(np.diag(a))
     # initialize chi2
     chisq_old = chi2(f)
-    
+    # lambda
+    lambda_ = np.sqrt(x0.T @ dtd @ x0)
+    if lambda_ <= 0 or ~np.isfinite(lambda_):
+        lambda_ = 100
+
     # make our scaling factor
-    mu = factor * np.diagonal(a).max()
-    
+    # mu = factor * np.diagonal(a).max()
+
     x = x0
-    
+
     for ev in range(maxfev):
+        logger.debug("Iteration #{}".format(ev))
         if gtest(g):
             info = 4
             break
         # calculate proposed step
-        aug_a = a + np.diag(np.ones_like(g) * mu)
+        # equivalent to $\lambda D^TD$ except no scaling on D
+        # which is why it's a diagnonal matrix ...
+        # lambda_ = make_lambda(j, d0)
+        logger.debug("lambda_ = {}".format(lambda_))
+        logger.debug("x = {}".format(x))
+        logger.debug("delta = {}".format(np.sqrt(x.T @ dtd @ x)))
+        # lambda_ = np.ones_like(g)
+        aug_a = a + lambda_ * dtd
         try:
             # https://software.intel.com/en-us/mkl-developer-reference-fortran-matrix-inversion-lapack-computational-routines
             # dx = -la.inv(aug_a) @ g
+            # dx is called p_k in Jorge J Moré's paper
             dx = la.solve(aug_a, -g)
         except la.LinAlgError:
-            mu *= factor
+            lambda_ *= factor
             continue
-        if xtest(dx, x):
+
+        if xtest(dx, x0):
             info = 2
             break
         # make test move, I think I should be saving previous
         # position so that I can "undo" if this is bad
         x = x0 + dx
         f = func(x)
+
+        # jtj = a
+        # v = -g
+        # temp1 = 0.5 * (g.T @ a @ g) / chisq_old
+        # temp2 = 0.5 * lambda_ * (g.T @ dtd @ g) / chisq_old
+        # pred_red = temp1 + 2.0 * temp2
+        # dirder = -1.0 * (temp1 + temp2)
+
         chisq_new = chi2(f)
-        # see if we reduced chisq, note we should do more here
-        rho = chisq_old - chisq_new
-        if rho > 0:
+        if method == "mle":
+            chisq_predicted = chi2((f[0] + j @ dx, f[1]))
+        else:
+            chisq_predicted = chi2(f + j @ dx)
+
+        actual_reduction = chisq_old - chisq_new
+        predicted_reduction = chisq_old - chisq_predicted
+        # see if we reduced chisq relative to what we predicted the reduction should be
+        rho = actual_reduction / predicted_reduction
+        if actual_reduction < 0:
+            logger.debug("Reduction negative setting to rho to 0")
+            rho = 0
+        elif predicted_reduction < 0:
+            logger.debug("Predicted negative setting to rho to 1")
+            rho = 0
+        elif not np.isfinite(rho):
+            logger.debug("rho = {} setting to 0".format(rho))
+            rho = 0
+        else:
+            logger.debug("rho = {}".format(rho))
+        if rho > 1e-2:
             # ftest
-            if rho <= ftol * chisq_old:
+            if actual_reduction <= ftol * chisq_old:
                 info = 1
                 break
             # update params, chisq and a and g
-            x0 = x
-            chisq_old = chisq_new
+            x0, chisq_old = x, chisq_new
             j, a, g = update(x0, f)
-            mu /= factor
+            dtd = np.fmax(dtd, np.diag(np.diag(a)))
+            lambda_ = max(lambda_ / 5, 1e-7)
         else:
-            mu *= factor
+            lambda_ = min(lambda_ * 1.5, 1e7)
+
     else:
         # loop exited normally
         info = 5
@@ -333,6 +427,8 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
     if method == "mle":
         # remember we return the data with f?
         f = f[0]
+
+    logger.info("Ended with {} function evaluations".format(ev))
 
     infodict = dict(fvec=f, fjac=j, nfev=ev)
     
@@ -346,7 +442,7 @@ def lm(func, x0, args=(), Dfun=None, full_output=False,
                 raise errors['unknown'][1](errors['unknown'][0])
 
     errmsg = errors[info][0]
-
+    logger.info(errmsg)
     popt, cov_x = x, None
     
     if full_output:
@@ -451,7 +547,7 @@ def curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False,
         else:
             return res[0], res[1], None, "No error", 1
     
-    if method in {'ls', 'lm', 'trf', 'dogbox', None}:
+    elif method == 'ls':
         _wrap_func = _wrap_func_ls
         _wrap_jac = _wrap_jac_ls
     elif method == "mle":
