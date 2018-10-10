@@ -24,7 +24,7 @@ from skimage.measure import moments
 from scipy.optimize import OptimizeWarning
 # need to detrend data before estimating parameters
 from .utils import detrend, find_real_root_near_zero
-from .lm import curve_fit
+from dphutils.lm import curve_fit
 
 # Eventually we'll want to abstract the useful, abstract bits of this
 # class to a parent class called peak that will allow for multiple types
