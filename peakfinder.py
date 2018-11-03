@@ -479,7 +479,7 @@ class PeakFinder(object):
         self._blobs = my_blobs
         return my_blobs
 
-    def plot_blobs(self, diameter=None, size=6, **kwargs):
+    def plot_blobs(self, diameter=None, size=6, with_labels=True, **kwargs):
         """Plot the found blobs
 
         Parameters
@@ -500,7 +500,8 @@ class PeakFinder(object):
         if self.blobs is None:
             raise RuntimeError('No blobs have been found')
 
-        fig, ax = plt.subplots(1, 1, figsize=(size, size))
+        ny, nx = self.data.shape
+        fig, ax = plt.subplots(1, 1, figsize=(size, size * ny / nx))
 
         ax.matshow(self.data, **kwargs)
         for i, blob in enumerate(self.blobs):
@@ -509,18 +510,19 @@ class PeakFinder(object):
                 diameter = s * 4
 
             c = plt.Circle((x, y), radius=diameter / 2, color='r', linewidth=1,
-                           fill=False)
+                           fill=False, transform=ax.transData)
             ax.add_patch(c)
-            if not np.issubdtype(float, self.data.dtype):
-                r = int(r)
-                fmtstr = '{}'
-            else:
-                fmtstr = '{}:{:.0f}'
+            if with_labels:
+                if not np.issubdtype(float, self.data.dtype):
+                    r = int(r)
+                    fmtstr = '{}'
+                else:
+                    fmtstr = '{}:{:.0f}'
 
-            ax.annotate(fmtstr.format(i, r), xy=(x, y),
-                        xytext=(x + diameter / 2, y + diameter / 2),
-                        textcoords='data', color='k',
-                        backgroundcolor=(1, 1, 1, 0.5), xycoords='data')
+                ax.annotate(fmtstr.format(i, r), xy=(x, y),
+                            xytext=(x + diameter / 2, y + diameter / 2),
+                            textcoords='data', color='k',
+                            backgroundcolor=(1, 1, 1, 0.5), xycoords='data')
 
         return fig, ax
 
