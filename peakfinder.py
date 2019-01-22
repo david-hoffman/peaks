@@ -97,19 +97,17 @@ class PeakFinder(object):
 
     @property
     def fits(self):
-        '''
-        Optimized parameters from the fit
-        '''
+        """Optimized parameters from the fit"""
         # User should not be able to modify this, so return copy
         return self._fits.copy()
 
     @property
     def blobs(self):
-        '''
-        Estimated peak locations
-        '''
+        """Estimated peak locations"""
         # User should not be able to modify this, so return copy
-        return self._blobs.copy()
+        # sort blobs by the max amp value, descending
+        blobs = self._blobs
+        return blobs[blobs[:, -1].argsort()][::-1]
 
     @blobs.setter
     def blobs(self, value):
@@ -240,11 +238,8 @@ class PeakFinder(object):
 
             blobs = np.vstack((y, x, s, diff_img[y.astype(int), x.astype(int)])).T
 
-            # sort blobs by the max amp value, descending
-            blobs = blobs[blobs[:, 3].argsort()][::-1]
-
         self._blobs = blobs
-        return blobs
+        return self.blobs
 
     def label_blobs(self, diameter=None):
         '''
@@ -477,7 +472,7 @@ class PeakFinder(object):
             my_blobs = my_blobs[my_blobs[:, 3].argsort()]
         # set the internals and return them
         self._blobs = my_blobs
-        return my_blobs
+        return self.blobs
 
     def plot_blobs(self, diameter=None, size=6, with_labels=True, **kwargs):
         """Plot the found blobs
