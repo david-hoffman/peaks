@@ -35,6 +35,10 @@ from dphplotting import display_grid
 from scipy.signal import argrelmax
 from scipy.spatial import cKDTree
 from dphutils import fft_gaussian_filter, slice_maker, mode
+import tqdm
+import dask
+
+from dask.diagnostics import ProgressBar
 
 
 class PeakFinder(object):
@@ -359,17 +363,14 @@ class PeakFinder(object):
         # If we don't have blobs, find them.
         if self._blobs is None:
             self.find_blobs()
-        # set up the container for our fits
-        peakfits = []
-        # iterate through blobs
-        for y, x, s, r in self.blobs:
-            # make a fit window
-            win = slice_maker((int(y), int(x)), width)
-            # make a fit object with a subset of the data
+        
+        @dask.delayed
+        def fitfunc(win, sub_data):
+            # fit the data as we should
             if poly_coefs_df is None:
-                mypeak = Gauss2D(self.data[win])
+                mypeak = Gauss2D(sub_data)
             else:
-                mypeak = Gauss2Dz(self.data[win], poly_coefs_df)
+                mypeak = Gauss2Dz(sub_data, poly_coefs_df)
             # optimize params
             mypeak.optimize_params(**kwargs)
             fit_coefs = mypeak.all_params_dict()
@@ -379,10 +380,16 @@ class PeakFinder(object):
             # Calc SNR for each peak
             fit_coefs['noise'] = mypeak.noise
             fit_coefs['SNR'] = fit_coefs['amp'] / fit_coefs['noise']
-            # append to peakfits
-            peakfits.append(fit_coefs)
+            return fit_coefs
+
+
+        # iterate through blobs
+        windows = [slice_maker((int(y), int(x)), width) for y, x, s, r in self.blobs]
+        data_to_fit = [self.data[win] for win in tqdm.tqdm_notebook(windows)]
+        peakfits = dask.delayed([fitfunc(win, sub_data) for win, sub_data in zip(windows, data_to_fit)])
         # construct DataFrame
-        peakfits_df = pd.DataFrame(peakfits)
+        with ProgressBar():
+            peakfits_df = pd.DataFrame(peakfits.compute(scheduler="processes"))
         # internalize DataFrame
         self._fits = peakfits_df
         # Return it to user
