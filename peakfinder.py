@@ -38,6 +38,9 @@ from dphutils import fft_gaussian_filter, slice_maker, mode
 import tqdm
 import dask
 
+import logging
+logger = logging.getLogger(__name__)
+
 from dask.diagnostics import ProgressBar
 
 
@@ -184,6 +187,7 @@ class PeakFinder(object):
                 raise TypeError("Invalid type for method 'mode' {}".format(self.data.dtype))
         else:
             raise ValueError("Invalid option for `method`: {}".format(method))
+        logger.debug("Threshold = {}".format(self.thresh))
 
     def find_blobs(self, method='dog', **kwargs):
         '''
