@@ -389,11 +389,10 @@ class PeakFinder(object):
 
         # iterate through blobs
         windows = [slice_maker((int(y), int(x)), width) for y, x, s, r in self.blobs]
-        data_to_fit = [self.data[win] for win in tqdm.tqdm_notebook(windows)]
+        data_to_fit = [self.data[win] for win in windows]
         peakfits = dask.delayed([fitfunc(win, sub_data) for win, sub_data in zip(windows, data_to_fit)])
         # construct DataFrame
-        with ProgressBar():
-            peakfits_df = pd.DataFrame(peakfits.compute(scheduler="processes"))
+        peakfits_df = pd.DataFrame(peakfits.compute())
         # internalize DataFrame
         self._fits = peakfits_df
         # Return it to user
