@@ -13,9 +13,11 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import griddata
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn import linear_model
+
 try:
     from pyfftw.interfaces.numpy_fft import rfftn, rfftfreq
     import pyfftw
+
     # Turn on the cache for optimum performance
     pyfftw.interfaces.cache.enable()
 except ImportError:
@@ -97,7 +99,7 @@ def _ensure_positive(data):
 
 def nmoment(x, counts, c, n):
     """A helper function to calculate moments of histograms"""
-    return np.sum((x - c)**n * counts) / np.sum(counts)
+    return np.sum((x - c) ** n * counts) / np.sum(counts)
 
 
 def gauss_no_offset(x, amp, x0, sigma_x):
@@ -119,7 +121,7 @@ def gauss_no_offset(x, amp, x0, sigma_x):
     result : ndarray
         A model of gaussian peak without offset
     """
-    return amp * np.exp(-(x - x0)**2 / (2 * sigma_x**2))
+    return amp * np.exp(-(x - x0) ** 2 / (2 * sigma_x ** 2))
 
 
 def gauss(x, amp, x0, sigma_x, offset):
@@ -189,7 +191,7 @@ def gauss_fit(xdata, ydata, withoffset=True, trim=None, guess_z=None):
         else:
             popt, pcov = curve_fit(gauss_no_offset, xdata, ydata, p0=p0[:3])
             popt = np.insert(popt, 3, 0)
-            temp_pcov = np.zeros((4,4))
+            temp_pcov = np.zeros((4, 4))
             temp_pcov[:3, :3] = pcov
             pcov = temp_pcov
     except RuntimeError:
@@ -309,10 +311,10 @@ def sine_jac(params, xdata, ydata, func):
     return np.vstack((dydamp, dydfreq, dydphase, dydoffset))
 
 
-def grid(x, y, z, resX=1000, resY=1000, method='cubic'):
+def grid(x, y, z, resX=1000, resY=1000, method="cubic"):
     """Convert 3 column data to matplotlib grid"""
     if not np.isfinite(x + y + z).all():
-        raise ValueError('x, y or z is not finite')
+        raise ValueError("x, y or z is not finite")
     xi = np.linspace(x.min(), x.max(), resX)
     yi = np.linspace(y.min(), y.max(), resY)
     X, Y = np.meshgrid(xi, yi)
@@ -331,7 +333,7 @@ def scatterplot(z, y, x, ax=None, fig=None, cmap="plasma", **kwargs):
     # split out the key words for the grid method
     # so that the rest can be passed onto the first contourf call.
     grid_kwargs = {}
-    for k in ('resX', 'resY', 'method'):
+    for k in ("resX", "resY", "method"):
         try:
             grid_kwargs[k] = kwargs.pop(k)
         except KeyError:
@@ -345,17 +347,16 @@ def scatterplot(z, y, x, ax=None, fig=None, cmap="plasma", **kwargs):
     # conts=np.linspace(mymin, mymax, 20, endpoint=True)
     conts1 = np.linspace(mymin, mymax, 30)
     conts2 = np.linspace(mymin, mymax, 10)
-    s = ax.contourf(X, Y, Z, conts1, origin='upper',
-                    cmap=cmap, zorder=0, **kwargs)
-    ax.contour(X, Y, Z, conts2, colors='k', origin='upper', zorder=1)
+    s = ax.contourf(X, Y, Z, conts1, origin="upper", cmap=cmap, zorder=0, **kwargs)
+    ax.contour(X, Y, Z, conts2, colors="k", origin="upper", zorder=1)
 
     # if there's more than 100 beads to fit then don't make spots
     if len(x) > 100:
-        scatter_kwargs = dict(marker='.')
+        scatter_kwargs = dict(marker=".")
     else:
-        scatter_kwargs = dict(marker='o', edgecolors="b", linewidths=1)
+        scatter_kwargs = dict(marker="o", edgecolors="b", linewidths=1)
 
-    ax.scatter(x, y, c='c', zorder=2, **scatter_kwargs)
+    ax.scatter(x, y, c="c", zorder=2, **scatter_kwargs)
     ax.invert_yaxis()
     the_divider = make_axes_locatable(ax)
     color_axis = the_divider.append_axes("right", size="5%", pad=0.1)
@@ -376,9 +377,9 @@ def find_real_roots_near_zero(poly):
     i = np.abs(r).argmin()
     r1 = r[i]
     if r1 < 0:
-        return r[i:i + 2]
+        return r[i : i + 2]
     else:
-        return r[i - 1:i + 1]
+        return r[i - 1 : i + 1]
 
 
 def find_real_root_near_zero(poly):

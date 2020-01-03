@@ -23,8 +23,9 @@ class TestPeakFinder(unittest.TestCase):
         data = np.zeros(shape)
         points = self.points = (np.random.rand(10, 2) * shape).astype(int)
         data[points.T[0], points.T[1]] = 1
-        assert data.sum() == 10, ("Something wrong with data generation,"
-                                  " points = {}".format(points))
+        assert data.sum() == 10, "Something wrong with data generation," " points = {}".format(
+            points
+        )
         self.data = data
 
     def test_self_consistency(self):
@@ -33,4 +34,3 @@ class TestPeakFinder(unittest.TestCase):
         pf.find_blobs()
         found_points = np.sort(pf.blobs[:, :2], 0)
         assert_array_equal(found_points, np.sort(self.points, 0))
-

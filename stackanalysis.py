@@ -2,6 +2,7 @@
 A set of classes for analyzing data stacks that contain punctate data
 """
 import os
+
 # import time
 import numpy as np
 import pandas as pd
@@ -19,9 +20,11 @@ from .utils import gauss_fit, sine, sine_jac, scatterplot, sine2, sine_fit, gaus
 from scipy.fftpack import fft
 from dphutils import slice_maker
 from dphplotting import make_grid, clean_grid
+
 try:
     from pyfftw.interfaces.numpy_fft import rfftn, rfftfreq
     import pyfftw
+
     # Turn on the cache for optimum performance
     pyfftw.interfaces.cache.enable()
 except ImportError:
@@ -33,6 +36,7 @@ except ImportError:
 # each type of peak. Hopefully regardless of dimensionality.
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,23 +93,19 @@ class StackAnalyzer(object):
             # we have to cast through bytes because of Py3 peculiarities
             mv_array.cast("B").cast(dtype_char)[:] = self.stack.ravel()
             # start pool, initilize shared array on each worker.
-            with mp.Pool(nproc, _init_func,
-                         (par_func, shared_array_base, self.stack.shape)) as p:
+            with mp.Pool(nproc, _init_func, (par_func, shared_array_base, self.stack.shape)) as p:
                 if not quiet:
-                    logger.debug('Multiprocessing engaged with {} cores'.format(nproc))
+                    logger.debug("Multiprocessing engaged with {} cores".format(nproc))
                 # farm out the tasks
-                results = [p.apply_async(
-                    par_func,
-                    args=(fitwidth, blob, None),
-                    kwds=kwargs
-                ) for blob in blobs]
+                results = [
+                    p.apply_async(par_func, args=(fitwidth, blob, None), kwds=kwargs)
+                    for blob in blobs
+                ]
                 # collect results
                 fits = [pp.get() for pp in results]
         else:
             # serial version, just list comprehension
-            fits = [par_func(
-                fitwidth, blob, self.stack, **kwargs)
-                for blob in blobs]
+            fits = [par_func(fitwidth, blob, self.stack, **kwargs) for blob in blobs]
 
         # clear nones (i.e. unsuccessful fits)
         fits = [fit for fit in fits if fit is not None]
@@ -130,22 +130,18 @@ class StackAnalyzer(object):
             # spin up the pool of workers
             with mp.Pool(nproc) as p:
                 if not quiet:
-                    logger.debug('Multiprocessing engaged with {} cores'.format(nproc))
+                    logger.debug("Multiprocessing engaged with {} cores".format(nproc))
                 # farm out the tasks, because we're using module level
                 # functions instead of class methods we avoid pickling
                 # too much data.
-                results = [p.apply_async(
-                    par_func,
-                    args=(peakfit, ),
-                    kwds=kwargs
-                ) for peakfit in peakfits]
+                results = [
+                    p.apply_async(par_func, args=(peakfit,), kwds=kwargs) for peakfit in peakfits
+                ]
                 # collect results
                 params = [pp.get() for pp in results]
         else:
             # serial version, just list comprehension
-            params = [par_func(
-                peakfit, **kwargs)
-                for peakfit in peakfits]
+            params = [par_func(peakfit, **kwargs) for peakfit in peakfits]
         # add peak number
         for i, param in enumerate(params):
             if param is not None:
@@ -173,20 +169,34 @@ class StackAnalyzer(object):
                 y.append(f.y0 - f.y0.mean())
         assert x and y, "x or y is empty"
         # plot the mean with ci 90% bands
-        sns.tsplot(x, ax=ax0, ci=90, color='b')
-        sns.tsplot(y, ax=ax0, ci=90, color='r')
-        ax0.set_xlabel('Frame #')
-        ax0.set_ylabel('Distance (pixel)')
+        sns.tsplot(x, ax=ax0, ci=90, color="b")
+        sns.tsplot(y, ax=ax0, ci=90, color="r")
+        ax0.set_xlabel("Frame #")
+        ax0.set_ylabel("Distance (pixel)")
         # flatten data
         xar = np.array(x).ravel()
         yar = np.array(y).ravel()
         # determine good histogram bin size
         nbins = "auto"
         # plot hists
-        ax1.hist(xar, color=ColorConverter().to_rgba("b", 0.5), normed=True,
-                 label="$x$", bins=nbins, histtype="stepfilled", range=(-1, 1))
-        ax1.hist(yar, color=ColorConverter().to_rgba("r", 0.5), normed=True,
-                 label="$y$", bins=nbins, histtype="stepfilled", range=(-1, 1))
+        ax1.hist(
+            xar,
+            color=ColorConverter().to_rgba("b", 0.5),
+            normed=True,
+            label="$x$",
+            bins=nbins,
+            histtype="stepfilled",
+            range=(-1, 1),
+        )
+        ax1.hist(
+            yar,
+            color=ColorConverter().to_rgba("r", 0.5),
+            normed=True,
+            label="$y$",
+            bins=nbins,
+            histtype="stepfilled",
+            range=(-1, 1),
+        )
         ax1.set_xlabel("Distance (pixel)")
         ax1.legend()
         fig.suptitle(title)
@@ -203,8 +213,7 @@ class PSFStackAnalyzer(StackAnalyzer):
         super().__init__(stack)
         self.psfwidth = psfwidth
         # median filter to remove spikes
-        self.peakfinder = PeakFinder(median_filter(self.stack.max(0), 3),
-                                     self.psfwidth, **kwargs)
+        self.peakfinder = PeakFinder(median_filter(self.stack.max(0), 3), self.psfwidth, **kwargs)
         self.peakfinder.find_blobs()
         # should have a high accuracy mode that filters the data first
         # and finds the slice with the max value before finding peaks.
@@ -212,18 +221,19 @@ class PSFStackAnalyzer(StackAnalyzer):
     def fitPeaks(self, fitwidth, nproc=1, **kwargs):
         return super().fitPeaks(fitwidth, nproc, par_func=_fitPeaks_psf, **kwargs)
 
-    def calc_psf_params(self, nproc=0, subrange=slice(None, None, None),
-                        **kwargs):
+    def calc_psf_params(self, nproc=0, subrange=slice(None, None, None), **kwargs):
         """Calculate the PSF paramters for all found peaks"""
-        params = super()._calc_params(nproc=nproc, par_func=_calc_psf_param,
-                                      subrange=subrange, **kwargs)
+        params = super()._calc_params(
+            nproc=nproc, par_func=_calc_psf_param, subrange=subrange, **kwargs
+        )
         self.psf_params = pd.DataFrame(params).set_index("peak_num")
         return self.psf_params
 
-    def plot_psf_params(self, feature='z0', **kwargs):
+    def plot_psf_params(self, feature="z0", **kwargs):
         psf_params = self.psf_params
-        fig, ax = scatterplot(psf_params[feature].values, psf_params.y0.values,
-                              psf_params.x0.values, **kwargs)
+        fig, ax = scatterplot(
+            psf_params[feature].values, psf_params.y0.values, psf_params.x0.values, **kwargs
+        )
         ax.set_title(feature)
         return fig, ax
 
@@ -235,8 +245,7 @@ class PSFStackAnalyzer(StackAnalyzer):
         # take the top and bottom
         top_half = num // 2
         bot_half = num - top_half
-        to_plot = pd.concat((psf_params.iloc[:bot_half],
-                             psf_params.iloc[-top_half:]))
+        to_plot = pd.concat((psf_params.iloc[:bot_half], psf_params.iloc[-top_half:]))
         # pull internal fits for later use
         fits = self.fits
         # make a grid axes
@@ -249,8 +258,7 @@ class PSFStackAnalyzer(StackAnalyzer):
             ax.plot(amp, "o")
             # calculate the fit function and display
             x = np.linspace(f.index.min(), f.index.max())
-            gauss_fit = gauss(x, params.amp, params.z0, params.sigma_z,
-                                params.offset)
+            gauss_fit = gauss(x, params.amp, params.z0, params.sigma_z, params.offset)
             ax.plot(x, gauss_fit)
             if trim:
                 ax.axvline(params.z0 + trim * params.sigma_z, c="r", ls="--")
@@ -268,15 +276,15 @@ class SIMStackAnalyzer(StackAnalyzer):
     docstring for SIMStackAnalyser
     """
 
-    def __init__(self, stack, norients, nphases, psfwidth=1.68,
-                 periods=1, **kwargs):
+    def __init__(self, stack, norients, nphases, psfwidth=1.68, periods=1, **kwargs):
         # make sure the stack has the right shape
         my_shape = stack.shape
-        assert len(my_shape) == 3, ("Stack has wrong number of dimensions,"
-                                    " dim = {}").format(my_shape)
-        assert stack.shape[0] == norients * nphases, ("Number of images does"
-                                                      " not equal"
-                                                      " orients * phases")
+        assert len(my_shape) == 3, ("Stack has wrong number of dimensions," " dim = {}").format(
+            my_shape
+        )
+        assert stack.shape[0] == norients * nphases, (
+            "Number of images does" " not equal" " orients * phases"
+        )
 
         super().__init__(stack)
 
@@ -285,8 +293,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         self.norients = norients
         self.periods = periods
 
-        self.peakfinder = PeakFinder(median_filter(self.stack.max(0), 3),
-                                     self.psfwidth, **kwargs)
+        self.peakfinder = PeakFinder(median_filter(self.stack.max(0), 3), self.psfwidth, **kwargs)
         self.peakfinder.find_blobs()
         # should have a high accuracy mode that filters the data first and
         # finds the slice with the max value before finding peaks.
@@ -303,7 +310,7 @@ class SIMStackAnalyzer(StackAnalyzer):
 
         peakfits = my_peaks.fit_blobs(diameter=width)
         # now reset the blobs to the fit values
-        my_peaks.blobs = peakfits[['y0', 'x0', 'sigma_x', 'amp']].values
+        my_peaks.blobs = peakfits[["y0", "x0", "sigma_x", "amp"]].values
 
         # label again
         my_labels = my_peaks.label_blobs(diameter=width)
@@ -313,8 +320,7 @@ class SIMStackAnalyzer(StackAnalyzer):
 
         my_medians = np.median(self.data, axis=(1, 2))
 
-        my_sums = np.array([self.data[:, obj[0], obj[1]].sum((1, 2))
-                            for obj in my_objects])
+        my_sums = np.array([self.data[:, obj[0], obj[1]].sum((1, 2)) for obj in my_objects])
 
         self.sums = my_sums - my_medians
         # reset blobs to original
@@ -324,22 +330,21 @@ class SIMStackAnalyzer(StackAnalyzer):
         """Fit all the found peaks"""
         super().fitPeaks(fitwidth, nproc, par_func=_fitPeaks_sim, **kwargs)
         ni = pd.MultiIndex.from_product(
-            [np.arange(self.norients), np.arange(self.nphases)],
-            names=['orientation', 'phase']
+            [np.arange(self.norients), np.arange(self.nphases)], names=["orientation", "phase"]
         )
 
         for peak in self.fits:
-            peak['ni'] = ni
-            peak.set_index('ni', inplace=True)
+            peak["ni"] = ni
+            peak.set_index("ni", inplace=True)
 
         self.fits = [peak.reindex(ni) for peak in self.fits]
 
         return self.fits
 
-    def calc_sim_params(self, nproc=0, modtype='ls', **kwargs):
+    def calc_sim_params(self, nproc=0, modtype="ls", **kwargs):
         """Calculate all SIM parameters for found peaks"""
         # pass in the relavent parameters to the superclass
-        if modtype == 'ls':
+        if modtype == "ls":
             fit_func = calc_mod_ls
         elif modtype == "ls_3D":
             fit_func = calc_mod3D_ls
@@ -347,11 +352,15 @@ class SIMStackAnalyzer(StackAnalyzer):
             fit_func = calc_mod
         else:
             raise ValueError("Unrecognized modulation fitting type " + modtype)
-        params = super()._calc_params(nproc=nproc, par_func=_calc_sim_param,
-                                      periods=self.periods,
-                                      nphases=self.nphases,
-                                      modtype=modtype,
-                                      fit_func=fit_func, **kwargs)
+        params = super()._calc_params(
+            nproc=nproc,
+            par_func=_calc_sim_param,
+            periods=self.periods,
+            nphases=self.nphases,
+            modtype=modtype,
+            fit_func=fit_func,
+            **kwargs
+        )
         sim_params = pd.DataFrame(list(itt.chain.from_iterable(params)))
         if len(sim_params):
             self.sim_params = sim_params.set_index(["peak_num", "orientation"])
@@ -363,19 +372,23 @@ class SIMStackAnalyzer(StackAnalyzer):
         norients = self.norients
         fig, ax = plt.subplots(1, norients, figsize=(4 * norients, 4))
 
-        for i, orient in sim_params.groupby('orientation'):
+        for i, orient in sim_params.groupby("orientation"):
             orient = orient.dropna()
             if orientations is not None:
                 name = orientations[i]
             else:
                 name = i
 
-            scatterplot(orient.modulation.values, orient.y0.values,
-                        orient.x0.values, ax=ax[i], fig=fig, **kwargs)
+            scatterplot(
+                orient.modulation.values,
+                orient.y0.values,
+                orient.x0.values,
+                ax=ax[i],
+                fig=fig,
+                **kwargs
+            )
             ax[i].set_title(
-                'Orientation {}, avg mod = {:.3f}'.format(
-                    name, orient.modulation.mean()
-                )
+                "Orientation {}, avg mod = {:.3f}".format(name, orient.modulation.mean())
             )
 
         fig.tight_layout()
@@ -392,13 +405,18 @@ class SIMStackAnalyzer(StackAnalyzer):
         if len(sim_params):
             try:
                 axs = sim_params.hist(
-                    bins="auto", column='modulation',
-                    by='orientation', figsize=(4 * self.norients, 4),
-                    layout=(1, self.norients), histtype='stepfilled',
-                    normed=True, sharex=True, sharey=True
+                    bins="auto",
+                    column="modulation",
+                    by="orientation",
+                    figsize=(4 * self.norients, 4),
+                    layout=(1, self.norients),
+                    histtype="stepfilled",
+                    normed=True,
+                    sharex=True,
+                    sharey=True,
                 )
             except ValueError as e:
-                raise(e)
+                raise (e)
             else:
                 # find out the figure, pandas doesn't return it automatically.
                 fig = axs.ravel()[0].get_figure()
@@ -414,18 +432,20 @@ class SIMStackAnalyzer(StackAnalyzer):
                     # from the title get the location in DataFrame of desired data.
                     num = ax.title.get_text()
                     # check if the title is empyt, meaning group is empty
-                    if num != '':
+                    if num != "":
                         loc = int(num)
-                        grouped_mods = sim_params.groupby('orientation').modulation
+                        grouped_mods = sim_params.groupby("orientation").modulation
                         # calc mean
                         mymean = grouped_mods.mean().loc[loc]
                         # calc median
                         mymedian = grouped_mods.median().loc[loc]
                         # add lines
-                        ax.axvline(mymean, color='r')
-                        ax.axvline(mymedian, color='g')
+                        ax.axvline(mymean, color="r")
+                        ax.axvline(mymedian, color="g")
                         # replace title
-                        ax.set_title('{}, mean = {:.3f}, median = {:.3f}'.format(name, mymean, mymedian))
+                        ax.set_title(
+                            "{}, mean = {:.3f}, median = {:.3f}".format(name, mymean, mymedian)
+                        )
                     else:
                         # if group is empty remove the axis
                         fig.delaxes(ax)
@@ -440,8 +460,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         # take the top and bottom
         top_half = num // 2
         bot_half = num - top_half
-        to_plot = pd.concat((sim_params.iloc[:bot_half],
-                             sim_params.iloc[-top_half:]))
+        to_plot = pd.concat((sim_params.iloc[:bot_half], sim_params.iloc[-top_half:]))
         # pull internal fits for later use
         fits = self.fits
         # make a grid axes
@@ -454,15 +473,18 @@ class SIMStackAnalyzer(StackAnalyzer):
             # calculate the fit function and display
             x = np.linspace(0, len(amp) - 1)
             if "samp2" in params.keys():
-                sine_fit = sine2(x, params.samp, params.samp2, params.freq,
-                                 params.phase, params.soffset)
+                sine_fit = sine2(
+                    x, params.samp, params.samp2, params.freq, params.phase, params.soffset
+                )
             else:
-                sine_fit = sine(x, params.samp, params.freq, params.phase,
-                                params.soffset)
+                sine_fit = sine(x, params.samp, params.freq, params.phase, params.soffset)
             ax.plot(x, sine_fit)
             # place a title with both SNRs
-            ax.set_title("gSNR={:.0f}, sSNR={:.0f}, loc={}".format(
-                params.SNR, params.sin_SNR, (peak, orient)))
+            ax.set_title(
+                "gSNR={:.0f}, sSNR={:.0f}, loc={}".format(
+                    params.SNR, params.sin_SNR, (peak, orient)
+                )
+            )
         # make the layout tight and return
         fig.tight_layout()
         fig, axs = clean_grid(fig, axs)
@@ -549,15 +571,15 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
     # grab the starting fit parameters
     popt_d = startingfit.copy()
 
-    y0 = int(round(popt_d['y0']))
-    x0 = int(round(popt_d['x0']))
+    y0 = int(round(popt_d["y0"]))
+    x0 = int(round(popt_d["x0"]))
 
     if len(popt_d) == 6 * 2:
-        modeltype = 'norot'
+        modeltype = "norot"
     elif len(popt_d) == 5 * 2:
-        modeltype = 'sym'
+        modeltype = "sym"
     elif len(popt_d) == 7 * 2:
-        modeltype = 'full'
+        modeltype = "full"
     else:
         raise ValueError("Dictionary is too big {}".format(popt_d))
 
@@ -567,7 +589,7 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
         try:
             myslice = slice_maker((y0, x0), width)
         except RuntimeError as e:
-            logger.warning('Fit window moved to edge of ROI')
+            logger.warning("Fit window moved to edge of ROI")
             break
         else:
             # pull the starting values from it
@@ -575,19 +597,19 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
             xstart = myslice[1].start
 
             # insert the z-slice number
-            myslice = (s, ) + myslice
+            myslice = (s,) + myslice
 
             # set up the fit and perform it using last best params
             sub_stack = stack[myslice]
             if sub_stack.size == 0:
                 # the fir window has moved to the edge, break
-                logger.warning('Fit window moved to edge of ROI')
+                logger.warning("Fit window moved to edge of ROI")
                 break
             fit = Gauss2D(sub_stack)
 
             # move our guess coefs back into the window
-            popt_d['x0'] -= xstart
-            popt_d['y0'] -= ystart
+            popt_d["x0"] -= xstart
+            popt_d["y0"] -= ystart
             # leave this in for now for easier debugging in future.
             try:
                 fit.optimize_params(popt_d, **kwargs)
@@ -604,23 +626,23 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
             # move on to the next fit
             if not fit.error:
                 popt_d = fit.all_params_dict()
-                popt_d['x0'] += xstart
-                popt_d['y0'] += ystart
+                popt_d["x0"] += xstart
+                popt_d["y0"] += ystart
 
-                popt_d['slice'] = s
+                popt_d["slice"] = s
                 # calculate the apparent noise as the standard deviation
                 # of what's the residuals of the fit
-                popt_d['noise'] = (sub_stack - fit.fit_model).std()
+                popt_d["noise"] = (sub_stack - fit.fit_model).std()
                 toreturn.append(popt_d.copy())
 
-                y0 = int(round(popt_d['y0']))
-                x0 = int(round(popt_d['x0']))
+                y0 = int(round(popt_d["y0"]))
+                x0 = int(round(popt_d["x0"]))
             else:
                 # if the fit fails, make sure to _not_ update positions.
                 bad_fit = fit.all_params_dict()
-                bad_fit['slice'] = s
+                bad_fit["slice"] = s
                 # noise of a failed fit is not really useful
-                popt_d['noise'] = np.nan
+                popt_d["noise"] = np.nan
 
                 toreturn.append(bad_fit.copy())
 
@@ -640,7 +662,7 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
     ystart = myslice[0].start
     xstart = myslice[1].start
     # insert the equivalent of `:` at the beginning
-    myslice = (slice(None, None, None), ) + myslice
+    myslice = (slice(None, None, None),) + myslice
     # make the substack
     substack = stack[myslice]
     # we could do median filtering on the substack before attempting to
@@ -650,7 +672,7 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
     # use the range of each z-slice as an indication of intensity
     my_max = (substack.max((1, 2)) - substack.min((1, 2))).argmax()
     # now change my slice to be that zslice
-    myslice = (my_max, ) + myslice[1:]
+    myslice = (my_max,) + myslice[1:]
     substack = stack[myslice]
     # prep our container
     peakfits = []
@@ -662,36 +684,34 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
 
         # recenter the coordinates and add a slice variable
         opt_params = max_z.all_params_dict()
-        opt_params['slice'] = my_max
-        opt_params['x0'] += xstart
-        opt_params['y0'] += ystart
+        opt_params["slice"] = my_max
+        opt_params["x0"] += xstart
+        opt_params["y0"] += ystart
 
         # append to our list
         peakfits.append(opt_params.copy())
 
         # pop the slice parameters
-        opt_params.pop('slice')
+        opt_params.pop("slice")
 
         forwardrange = range(my_max + 1, stack.shape[0])
         backwardrange = reversed(range(0, my_max))
 
-        peakfits += fitPeak(
-            stack, forwardrange, fitwidth, opt_params.copy(), quiet=True)
+        peakfits += fitPeak(stack, forwardrange, fitwidth, opt_params.copy(), quiet=True)
 
-        peakfits += fitPeak(
-            stack, backwardrange, fitwidth, opt_params.copy(), quiet=True)
+        peakfits += fitPeak(stack, backwardrange, fitwidth, opt_params.copy(), quiet=True)
 
         # turn everything into a data frame for easy manipulation.
         peakfits_df = pd.DataFrame(peakfits)
         # convert sigmas to positive values
         try:
-            peakfits_df[['sigma_x', 'sigma_y']] = abs(peakfits_df[['sigma_x', 'sigma_y']])
+            peakfits_df[["sigma_x", "sigma_y"]] = abs(peakfits_df[["sigma_x", "sigma_y"]])
         except KeyError:
-            peakfits_df['sigma_x'] = abs(peakfits_df['sigma_x'])
+            peakfits_df["sigma_x"] = abs(peakfits_df["sigma_x"])
 
-        return peakfits_df.set_index('slice').sort_index()
+        return peakfits_df.set_index("slice").sort_index()
     else:
-        logger.warning('blob {} is unfittable'.format(blob))
+        logger.warning("blob {} is unfittable".format(blob))
         return None
 
 
@@ -731,7 +751,7 @@ def _fitPeaks_sim(fitwidth, blob, stack, **kwargs):
     xstart = myslice[1].start
 
     # insert the equivalent of `:` at the beginning
-    myslice = (slice(None, None, None), ) + myslice
+    myslice = (slice(None, None, None),) + myslice
 
     # pull the substack
     substack = stack[myslice]
@@ -764,11 +784,11 @@ def _fitPeaks_sim(fitwidth, blob, stack, **kwargs):
             opt = fit.all_params_dict()
 
             # update coordinates
-            opt['x0'] += xstart
-            opt['y0'] += ystart
+            opt["x0"] += xstart
+            opt["y0"] += ystart
 
             # add an estimate of the noise
-            opt['noise'] = (myslice - fit.fit_model).std()
+            opt["noise"] = (myslice - fit.fit_model).std()
 
             # return updated coordinates
             return opt
@@ -779,9 +799,8 @@ def _fitPeaks_sim(fitwidth, blob, stack, **kwargs):
         # turn everything into a data frame for easy manipulation.
         peakfits_df = pd.DataFrame(peakfits)
         # convert sigmas to positive values
-        peakfits_df[['sigma_x', 'sigma_y']] =\
-            abs(peakfits_df[['sigma_x', 'sigma_y']])
-        peakfits_df.index.name = 'slice'
+        peakfits_df[["sigma_x", "sigma_y"]] = abs(peakfits_df[["sigma_x", "sigma_y"]])
+        peakfits_df.index.name = "slice"
 
         return peakfits_df
     else:
@@ -861,6 +880,7 @@ def calc_mod(data, *args):
 # we can also to a straight linear regression if we assume we know the period
 # (which we should) http://stats.stackexchange.com/questions/257785/phase-modelling-while-fitting-sine-wave-to-cyclic-data
 
+
 def calc_mod_ls(data, periods, nphases):
     """
     Need to change this so that it:
@@ -885,8 +905,14 @@ def calc_mod_ls(data, periods, nphases):
         if 1 >= mod >= 0:
             res = data - sine(np.arange(len(data)), *popt)
             SNR = (opt_a) / np.nanstd(res)
-            return {'modulation': mod, 'samp': opt_a, 'freq': opt_f,
-                    'phase': opt_p, 'soffset': opt_o, "sin_SNR": SNR}
+            return {
+                "modulation": mod,
+                "samp": opt_a,
+                "freq": opt_f,
+                "phase": opt_p,
+                "soffset": opt_o,
+                "sin_SNR": SNR,
+            }
     # return None
 
 
@@ -952,26 +978,33 @@ def calc_mod3D_ls(data, periods, nphases):
             mod = (opt_a + 4 * opt_a2) ** 2 / (opt_o + opt_a + opt_a2) / (8 * opt_a2)
             res = data_fixed - sine2(x, *popt)
             SNR = (opt_a + opt_a2) / res.std()
-            return {'modulation': mod, 'samp': opt_a, 'samp2': opt_a2, 'freq': opt_f,
-                    'phase': opt_p, 'soffset': opt_o, "sin_SNR": SNR}
+            return {
+                "modulation": mod,
+                "samp": opt_a,
+                "samp2": opt_a2,
+                "freq": opt_f,
+                "phase": opt_p,
+                "soffset": opt_o,
+                "sin_SNR": SNR,
+            }
 
 
 def _calc_sim_param(fit, *, periods, nphases, modtype, fit_func, **kwargs):
     """Function to calculate the SIM parameters for a found peak
     i.e. modulation depth"""
     results = []
-    for i, trace in fit.groupby(level='orientation'):
+    for i, trace in fit.groupby(level="orientation"):
         # pull amplitude values
         params = fit_func(trace.amp.values, periods, nphases)
         if params:
             # take mean and pass to dict
             result = trace.mean().to_dict()
             # add orientation and modulation
-            result['orientation'] = i
+            result["orientation"] = i
             # copy params over to temp for output
             result.update(params)
             # calc the SNR using the noise from the fit
-            result['SNR'] = np.nanmedian((trace.amp / trace.noise))
+            result["SNR"] = np.nanmedian((trace.amp / trace.noise))
             results.append(result)
     # need to flatten the list, next function will try to make a DataFrame
     return results

@@ -16,12 +16,16 @@ Copyright (c) 2016, David Hoffman
 
 # need to be able to deal with warnings
 import warnings
+
 # numpy for numerical
 import numpy as np
+
 # need measure to take image moments
 from skimage.measure import moments
+
 # need basic curve fitting
 from scipy.optimize import OptimizeWarning
+
 # need to detrend data before estimating parameters
 from .utils import detrend, find_real_root_near_zero
 from dphutils.lm import curve_fit
@@ -32,6 +36,7 @@ from dphutils.lm import curve_fit
 # rho = cos(theta)
 
 import logging
+
 logger = logging.getLogger(__name__)
 
 
@@ -171,31 +176,30 @@ class Gauss2D(object):
         if not abs(rho) < 1:
             rho = np.sign(rho) * 0.9999
             warnings.warn(
-                'rho cannot be greater than 1 or less than -1. Here rho is {}.'
-                .format(rho) +
-                '\nCoercing to {}'
-                .format(rho))
+                "rho cannot be greater than 1 or less than -1. Here rho is {}.".format(rho)
+                + "\nCoercing to {}".format(rho)
+            )
 
-        z = (((x0 - mu0) / sigma0)**2 -
-             2 * rho * (x0 - mu0) * (x1 - mu1) / (sigma0 * sigma1) +
-             ((x1 - mu1) / sigma1)**2)
+        z = (
+            ((x0 - mu0) / sigma0) ** 2
+            - 2 * rho * (x0 - mu0) * (x1 - mu1) / (sigma0 * sigma1)
+            + ((x1 - mu1) / sigma1) ** 2
+        )
 
-        g = offset + amp * np.exp(-z / (2 * (1 - rho**2)))
+        g = offset + amp * np.exp(-z / (2 * (1 - rho ** 2)))
         return g
 
     @classmethod
     def gauss2D_norot(cls, xdata_tuple, amp, x0, y0, sigma_x, sigma_y, offset):
         """A special case of gauss2D with rho = 0"""
         # return the general form with a rho of 0
-        return cls.gauss2D(xdata_tuple, amp, x0, y0, sigma_x, sigma_y,
-                           0.0, offset)
+        return cls.gauss2D(xdata_tuple, amp, x0, y0, sigma_x, sigma_y, 0.0, offset)
 
     @classmethod
     def gauss2D_sym(cls, xdata_tuple, amp, x0, y0, sigma_x, offset):
         """A special case of gauss2D_norot with sigma_x = sigma_y"""
         # return the no rotation form with same sigmas
-        return cls.gauss2D_norot(xdata_tuple, amp, x0, y0,
-                                 sigma_x, sigma_x, offset)
+        return cls.gauss2D_norot(xdata_tuple, amp, x0, y0, sigma_x, sigma_x, offset)
 
     @classmethod
     def model(cls, xdata_tuple, *args):
@@ -225,9 +229,7 @@ class Gauss2D(object):
         elif num_args == 7:
             return cls.gauss2D(xdata_tuple, *args)
         else:
-            raise ValueError(
-                'len(args) = {}, number out of range!'.format(num_args)
-            )
+            raise ValueError("len(args) = {}, number out of range!".format(num_args))
 
     @classmethod
     def gauss2D_jac(cls, params, xdata):
@@ -241,34 +243,52 @@ class Gauss2D(object):
 
         dydamp = value / amp
 
-        dydmu0 = value * (
-                (2*(x0-mu0))/sigma0**2 - (2*rho*(x1-mu1))/(sigma0 * sigma1)
-            )/(2*(1 - rho**2))
+        dydmu0 = (
+            value
+            * ((2 * (x0 - mu0)) / sigma0 ** 2 - (2 * rho * (x1 - mu1)) / (sigma0 * sigma1))
+            / (2 * (1 - rho ** 2))
+        )
 
-        dydmu1 = value * (
-                (2*(x1-mu1))/sigma1**2 - (2*rho*(x0-mu0))/(sigma0 * sigma1)
-            )/(2*(1 - rho**2))
+        dydmu1 = (
+            value
+            * ((2 * (x1 - mu1)) / sigma1 ** 2 - (2 * rho * (x0 - mu0)) / (sigma0 * sigma1))
+            / (2 * (1 - rho ** 2))
+        )
 
-        dydsigma0 = value * (
-                ((x0-mu0)**2/sigma0**3) -
-                ((2 * rho * (x0 - mu0) * (x1 - mu1))/(sigma0**2 * sigma1))
-            )/(2*(1 - rho**2))
-
-        dydsigma1 = value * (
-                ((x1-mu1)**2/sigma1**3) -
-                ((2 * rho * (x0 - mu0) * (x1 - mu1))/(sigma1**2 * sigma0))
-            )/(2*(1 - rho**2))
-
-        dydrho = value*(
-            ((x0-mu0)*(x1-mu1))/((1 - rho**2) * sigma0 * sigma1) +
-            (rho *
-             (-((x0-mu0)**2/sigma0**2) +
-              (2*rho*(x0-mu0)*(x1-mu1))/(sigma0*sigma1) -
-              (x1-mu1)**2/sigma1**2))/((1-rho**2)**2)
+        dydsigma0 = (
+            value
+            * (
+                ((x0 - mu0) ** 2 / sigma0 ** 3)
+                - ((2 * rho * (x0 - mu0) * (x1 - mu1)) / (sigma0 ** 2 * sigma1))
             )
+            / (2 * (1 - rho ** 2))
+        )
+
+        dydsigma1 = (
+            value
+            * (
+                ((x1 - mu1) ** 2 / sigma1 ** 3)
+                - ((2 * rho * (x0 - mu0) * (x1 - mu1)) / (sigma1 ** 2 * sigma0))
+            )
+            / (2 * (1 - rho ** 2))
+        )
+
+        dydrho = value * (
+            ((x0 - mu0) * (x1 - mu1)) / ((1 - rho ** 2) * sigma0 * sigma1)
+            + (
+                rho
+                * (
+                    -((x0 - mu0) ** 2 / sigma0 ** 2)
+                    + (2 * rho * (x0 - mu0) * (x1 - mu1)) / (sigma0 * sigma1)
+                    - (x1 - mu1) ** 2 / sigma1 ** 2
+                )
+            )
+            / ((1 - rho ** 2) ** 2)
+        )
         # now return
-        return np.vstack((dydamp, dydmu0, dydmu1, dydsigma0, dydsigma1, dydrho,
-                          np.ones_like(value))).T
+        return np.vstack(
+            (dydamp, dydmu0, dydmu1, dydsigma0, dydsigma1, dydrho, np.ones_like(value))
+        ).T
 
     @classmethod
     def gauss2D_norot_jac(cls, params, xdata):
@@ -278,12 +298,11 @@ class Gauss2D(object):
         amp, x0, y0, sigma_x, sigma_y, offset = params
         value = cls.gauss2D_norot(xdata, *params).ravel() - offset
         dydamp = value / amp
-        dydx0 = value * (x - x0) / sigma_x**2
-        dydsigmax = value * (x - x0)**2 / sigma_x**3
-        dydy0 = value * (y - y0) / sigma_y**2
-        dydsigmay = value * (y - y0)**2 / sigma_y**3
-        return np.vstack((dydamp, dydx0, dydy0, dydsigmax,
-                          dydsigmay, np.ones_like(value))).T
+        dydx0 = value * (x - x0) / sigma_x ** 2
+        dydsigmax = value * (x - x0) ** 2 / sigma_x ** 3
+        dydy0 = value * (y - y0) / sigma_y ** 2
+        dydsigmay = value * (y - y0) ** 2 / sigma_y ** 3
+        return np.vstack((dydamp, dydx0, dydy0, dydsigmax, dydsigmay, np.ones_like(value))).T
         # the below works, but speed up only for above
         # new_params = np.insert(params, 5, 0)
         # return np.delete(cls.gauss2D_jac(new_params, xdata), 5, axis=0)
@@ -296,11 +315,10 @@ class Gauss2D(object):
         amp, x0, y0, sigma_x, offset = params
         value = cls.gauss2D_sym(xdata, *params).ravel() - offset
         dydamp = value / amp
-        dydx0 = value * (x - x0) / sigma_x**2
-        dydsigmax = value * (x - x0)**2 / sigma_x**3
-        dydy0 = value * (y - y0) / sigma_x**2
-        return np.vstack((dydamp, dydx0, dydy0, dydsigmax,
-                          np.ones_like(value))).T
+        dydx0 = value * (x - x0) / sigma_x ** 2
+        dydsigmax = value * (x - x0) ** 2 / sigma_x ** 3
+        dydy0 = value * (y - y0) / sigma_x ** 2
+        return np.vstack((dydamp, dydx0, dydy0, dydsigmax, np.ones_like(value))).T
         # new_params = np.insert(params, 4, 0)
         # new_params = np.insert(new_params, 4, params[3])
         # return np.delete(cls.gauss2D_jac(new_params, xdata), (4, 5), axis=0)
@@ -332,9 +350,7 @@ class Gauss2D(object):
         elif num_args == 7:
             return cls.gauss2D_jac(params, xdata_tuple)
         else:
-            raise RuntimeError(
-                'len(params) = {}, number out of range!'.format(num_args)
-            )
+            raise RuntimeError("len(params) = {}, number out of range!".format(num_args))
 
     @classmethod
     def gen_model(cls, data, *args):
@@ -391,17 +407,29 @@ class Gauss2D(object):
         num_params = len(opt_params)
         # depending on the specified model the area is calculated
         if num_params == 7:
-            return abs(2 * np.pi * opt_params[0] * opt_params[3] *
-                       opt_params[4] * np.sqrt(1 - opt_params[5]**2))
+            return abs(
+                2
+                * np.pi
+                * opt_params[0]
+                * opt_params[3]
+                * opt_params[4]
+                * np.sqrt(1 - opt_params[5] ** 2)
+            )
         elif num_params == 6:
-            return abs(2 * np.pi * opt_params[0] * opt_params[3] *
-                       opt_params[4])
+            return abs(2 * np.pi * opt_params[0] * opt_params[3] * opt_params[4])
         else:
-            return abs(2 * np.pi * opt_params[0] * opt_params[3]**2)
+            return abs(2 * np.pi * opt_params[0] * opt_params[3] ** 2)
 
-    def optimize_params(self, guess_params=None, modeltype='norot',
-                        quiet=False, bounds=None, checkparams=True,
-                        detrenddata=False, fittype='ls'):
+    def optimize_params(
+        self,
+        guess_params=None,
+        modeltype="norot",
+        quiet=False,
+        bounds=None,
+        checkparams=True,
+        detrenddata=False,
+        fittype="ls",
+    ):
         """
         A function that will optimize the parameters for a 2D Gaussian model
         using either a least squares or maximum likelihood method
@@ -450,15 +478,14 @@ class Gauss2D(object):
         if guess_params is None:
             # if not we generate them
             guess_params = self.estimate_params(detrenddata=detrenddata)
-            if modeltype.lower() == 'sym':
+            if modeltype.lower() == "sym":
                 guess_params = np.delete(guess_params, (4, 5))
-            elif modeltype.lower() == 'norot':
+            elif modeltype.lower() == "norot":
                 guess_params = np.delete(guess_params, 5)
-            elif modeltype.lower() == 'full':
+            elif modeltype.lower() == "full":
                 pass
             else:
-                raise RuntimeError(
-                    "modeltype is not one of: 'sym', 'norot', 'full'")
+                raise RuntimeError("modeltype is not one of: 'sym', 'norot', 'full'")
 
         # handle the case where the user passes a dictionary of values.
         if isinstance(guess_params, dict):
@@ -495,7 +522,7 @@ class Gauss2D(object):
             # set to default for all params
             if len(guess_params) == 7:
                 # make sure rho is restricted
-                ub = np.array((np.inf, ) * 5 + (1, np.inf))
+                ub = np.array((np.inf,) * 5 + (1, np.inf))
                 bounds = (-1 * ub, ub)
             else:
                 bounds = (-np.inf, np.inf)
@@ -503,32 +530,39 @@ class Gauss2D(object):
             # we'll catch this error later and alert the user with a printout
             warnings.simplefilter("ignore", OptimizeWarning)
 
-            if fittype.lower() == 'mle':
+            if fittype.lower() == "mle":
                 meth = "mle"
-            elif fittype.lower() == 'ls':
+            elif fittype.lower() == "ls":
                 # default to scipy
                 meth = None
             else:
                 raise RuntimeError("fittype is not one of: 'ls', 'mle'")
             try:
                 popt, pcov, infodict, errmsg, ier = curve_fit(
-                    model_ravel, (xx, yy), data.ravel(), p0=guess_params,
-                    bounds=bounds, full_output=True, jac=self.model_jac, method=meth)
+                    model_ravel,
+                    (xx, yy),
+                    data.ravel(),
+                    p0=guess_params,
+                    bounds=bounds,
+                    full_output=True,
+                    jac=self.model_jac,
+                    method=meth,
+                )
             except RuntimeError as e:
                 # print(e)
                 # now we need to re-parse the error message to set all the
                 # flags pull the message
-                self.errmsg = e.args[0].replace(
-                    'Optimal parameters not found: ', ''
-                )
+                self.errmsg = e.args[0].replace("Optimal parameters not found: ", "")
 
                 # run through possibilities for failure
-                errors = {0: "Improper",
-                          5: "maxfev",
-                          6: "ftol",
-                          7: "xtol",
-                          8: "gtol",
-                          'unknown': "Unknown"}
+                errors = {
+                    0: "Improper",
+                    5: "maxfev",
+                    6: "ftol",
+                    7: "xtol",
+                    8: "gtol",
+                    "unknown": "Unknown",
+                }
 
                 # set the error flag correctly
                 for k, v in errors.items():
@@ -563,11 +597,10 @@ class Gauss2D(object):
             self._pcov = pcov
         else:
             if not quiet:
-                logger.warning('Fitting error: ' + self.errmsg)
+                logger.warning("Fitting error: " + self.errmsg)
 
             self._popt = guess_params * np.nan
-            self._pcov = np.zeros((len(guess_params),
-                                   len(guess_params))) * np.nan
+            self._pcov = np.zeros((len(guess_params), len(guess_params))) * np.nan
 
         if not self.error:
             # if no fitting error calc residuals and noise
@@ -589,7 +622,7 @@ class Gauss2D(object):
         # check to see if the gaussian is bigger than its fitting window by a
         # large amount, generally the user is advised to enlarge the fitting
         # window or disregard the results of the fit.
-        sigma_msg = 'Sigma larger than ROI'
+        sigma_msg = "Sigma larger than ROI"
 
         max_s = max(data.shape)
 
@@ -606,11 +639,9 @@ class Gauss2D(object):
         # it must be greater than 0 but it can't be too much larger than the
         # entire range of data values
         if not (0 < popt[0] < (data.max() - data.min()) * 5):
-            self.errmsg = ("Amplitude unphysical, amp = {:.3f},"
-                           " data range = {:.3f}")
+            self.errmsg = "Amplitude unphysical, amp = {:.3f}," " data range = {:.3f}"
             # cast to float to avoid memmap problems
-            self.errmsg = self.errmsg.format(popt[0],
-                                             np.float(data.max() - data.min()))
+            self.errmsg = self.errmsg.format(popt[0], np.float(data.max() - data.min()))
             self.ier = 11
 
     def estimate_params(self, detrenddata=False):
@@ -663,8 +694,8 @@ class Gauss2D(object):
             # https://en.wikipedia.org/wiki/Image_moment# Central_moments
             xbar = M[1, 0] / M[0, 0]
             ybar = M[0, 1] / M[0, 0]
-            xvar = M[2, 0] / M[0, 0] - xbar**2
-            yvar = M[0, 2] / M[0, 0] - ybar**2
+            xvar = M[2, 0] / M[0, 0] - xbar ** 2
+            yvar = M[0, 2] / M[0, 0] - ybar ** 2
             covar = M[1, 1] / M[0, 0] - xbar * ybar
 
             # place the model parameters in the return array
@@ -704,31 +735,23 @@ class Gauss2D(object):
         True
         """
 
-        keys = ['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'rho', 'offset']
+        keys = ["amp", "x0", "y0", "sigma_x", "sigma_y", "rho", "offset"]
 
         num_params = len(params)
 
         # adjust the dictionary size
         if num_params < 7:
-            keys.remove('rho')
+            keys.remove("rho")
 
         if num_params < 6:
-            keys.remove('sigma_y')
+            keys.remove("sigma_y")
 
         return {k: p for k, p in zip(keys, params)}
 
     def params_errors_dict(self):
         """Return a dictionary of errors"""
 
-        keys = [
-            'amp_e',
-            'x0_e',
-            'y0_e',
-            'sigma_x_e',
-            'sigma_y_e',
-            'rho_e',
-            'offset_e'
-        ]
+        keys = ["amp_e", "x0_e", "y0_e", "sigma_x_e", "sigma_y_e", "rho_e", "offset_e"]
 
         # pull the variances of the parameters from the covariance matrix
         # take the sqrt to get the errors
@@ -739,10 +762,10 @@ class Gauss2D(object):
 
         # adjust the dictionary size
         if num_params < 7:
-            keys.remove('rho_e')
+            keys.remove("rho_e")
 
         if num_params < 6:
-            keys.remove('sigma_y_e')
+            keys.remove("sigma_y_e")
 
         return {k: p for k, p in zip(keys, params)}
 
@@ -762,7 +785,7 @@ class Gauss2D(object):
         ...     'offset': 7})
         array([1, 2, 3, 4, 5, 6, 7])
         """
-        keys = ['amp', 'x0', 'y0', 'sigma_x', 'sigma_y', 'rho', 'offset']
+        keys = ["amp", "x0", "y0", "sigma_x", "sigma_y", "rho", "offset"]
         values = []
         for k in keys:
             try:
@@ -840,7 +863,6 @@ class Gauss2Dz(Gauss2D):
         self.sigma_x_polyd = self.sigma_x_poly.deriv()
         self.sigma_y_polyd = self.sigma_y_poly.deriv()
 
-
     @property
     def fit_model(self):
         yy, xx = np.indices(self.data.shape)
@@ -888,22 +910,22 @@ class Gauss2Dz(Gauss2D):
         """
         x = xdata_tuple[0].ravel()
         y = xdata_tuple[1].ravel()
-        
+
         amp, x0, y0, z0, offset = params
         sigma_x, sigma_y = self.sigma_x_poly(z0), self.sigma_y_poly(z0)
         sigma_xd, sigma_yd = self.sigma_x_polyd(z0), self.sigma_y_polyd(z0)
-        
+
         value = self.model(xdata_tuple, *params).ravel() - offset
         dydamp = value / amp
-        
-        dydx0 = value * (x - x0) / sigma_x**2
-        dydsigmax = value * (x - x0)**2 / sigma_x**3
-        
-        dydy0 = value * (y - y0) / sigma_y**2
-        dydsigmay = value * (y - y0)**2 / sigma_y**3
-        
+
+        dydx0 = value * (x - x0) / sigma_x ** 2
+        dydsigmax = value * (x - x0) ** 2 / sigma_x ** 3
+
+        dydy0 = value * (y - y0) / sigma_y ** 2
+        dydsigmay = value * (y - y0) ** 2 / sigma_y ** 3
+
         dydz0 = dydsigmax * sigma_xd + dydsigmay * sigma_yd
-        
+
         return np.vstack((dydamp, dydx0, dydy0, dydz0, np.ones_like(value))).T
         # the below works, but speed up only for above
         # new_params = np.insert(params, 5, 0)
@@ -912,9 +934,16 @@ class Gauss2Dz(Gauss2D):
     def area(self, **kwargs):
         raise NotImplementedError
 
-    def optimize_params(self, guess_params=None, modeltype='norot',
-                        quiet=False, bounds=None, checkparams=True,
-                        detrenddata=False, fittype='ls'):
+    def optimize_params(
+        self,
+        guess_params=None,
+        modeltype="norot",
+        quiet=False,
+        bounds=None,
+        checkparams=True,
+        detrenddata=False,
+        fittype="ls",
+    ):
 
         # Test if we've been provided guess parameters
         # Need to test if the variable is good or not.
@@ -927,9 +956,14 @@ class Gauss2Dz(Gauss2D):
         if isinstance(guess_params, dict):
             guess_params = self.dict_to_params(guess_params)
 
-        return super().optimize_params(guess_params=guess_params,
-                        quiet=quiet, bounds=bounds, checkparams=checkparams,
-                        detrenddata=detrenddata, fittype=fittype)
+        return super().optimize_params(
+            guess_params=guess_params,
+            quiet=quiet,
+            bounds=bounds,
+            checkparams=checkparams,
+            detrenddata=detrenddata,
+            fittype=fittype,
+        )
 
     optimize_params.__doc__ = Gauss2D.optimize_params.__doc__
 
@@ -943,11 +977,9 @@ class Gauss2Dz(Gauss2D):
         # it must be greater than 0 but it can't be too much larger than the
         # entire range of data values
         if not (0 < popt[0] < (data.max() - data.min()) * 5):
-            self.errmsg = ("Amplitude unphysical, amp = {:.3f},"
-                           " data range = {:.3f}")
+            self.errmsg = "Amplitude unphysical, amp = {:.3f}," " data range = {:.3f}"
             # cast to float to avoid memmap problems
-            self.errmsg = self.errmsg.format(popt[0],
-                                             np.float(data.max() - data.min()))
+            self.errmsg = self.errmsg.format(popt[0], np.float(data.max() - data.min()))
             self.ier = 11
 
     def estimate_params(self, detrenddata=False):
@@ -1035,20 +1067,14 @@ class Gauss2Dz(Gauss2D):
         True
         """
 
-        keys = ['amp', 'x0', 'y0', 'z0', 'offset']
+        keys = ["amp", "x0", "y0", "z0", "offset"]
 
         return {k: p for k, p in zip(keys, params)}
 
     def params_errors_dict(self):
         """Return a dictionary of errors"""
 
-        keys = [
-            'amp_e',
-            'x0_e',
-            'y0_e',
-            'z0_e',
-            'offset_e'
-        ]
+        keys = ["amp_e", "x0_e", "y0_e", "z0_e", "offset_e"]
 
         # pull the variances of the parameters from the covariance matrix
         # take the sqrt to get the errors
@@ -1073,7 +1099,7 @@ class Gauss2Dz(Gauss2D):
         ...     'offset': 7})
         array([1, 2, 3, 4, 5, 6, 7])
         """
-        keys = ['amp', 'x0', 'y0', 'z0', 'offset']
+        keys = ["amp", "x0", "y0", "z0", "offset"]
         values = []
         for k in keys:
             try:
@@ -1084,6 +1110,6 @@ class Gauss2Dz(Gauss2D):
         return np.array(values)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # TODO: Make data, add noise, estimate, fit. Plot all 4 + residuals
     raise NotImplementedError
