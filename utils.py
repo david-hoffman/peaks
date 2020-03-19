@@ -121,7 +121,7 @@ def gauss_no_offset(x, amp, x0, sigma_x):
     result : ndarray
         A model of gaussian peak without offset
     """
-    return amp * np.exp(-(x - x0) ** 2 / (2 * sigma_x ** 2))
+    return amp * np.exp(-((x - x0) ** 2) / (2 * sigma_x ** 2))
 
 
 def gauss(x, amp, x0, sigma_x, offset):
