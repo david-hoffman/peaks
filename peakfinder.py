@@ -9,51 +9,52 @@ results.
 Copyright (c) 2016, David Hoffman
 """
 
-# Get our numerical stuff
-import numpy as np
-
-# need math log too, for arbitrary base
-from math import log
-
-# need pandas for better data containers
-import pandas as pd
-
-# we need a few extra features from matplot lib
-import matplotlib.pyplot as plt
+import logging
 
 # We want to be able to warn the user about potential problems
 import warnings
 
-# the difference of Gaussians algorithm
-from skimage.draw import circle
-from skimage.util import img_as_float
-from skimage.feature.peak import peak_local_max
-from skimage._shared.utils import assert_nD
+# need math log too, for arbitrary base
+from math import log
+
+import dask
+
+# we need a few extra features from matplot lib
+import matplotlib.pyplot as plt
+
+# Get our numerical stuff
+import numpy as np
+
+# need pandas for better data containers
+import pandas as pd
+import tqdm
+
+# plotting
+from dphplotting import display_grid
+from dphutils import fft_gaussian_filter, mode, slice_maker
 
 # ndimage imports
 from scipy.ndimage import (
     gaussian_filter,
-    median_filter,
-    uniform_filter1d,
     maximum_filter,
+    median_filter,
     minimum_filter,
+    uniform_filter1d,
 )
-from scipy.ndimage.measurements import label, find_objects
-
-# import our 2D gaussian fitting class
-from .gauss2d import Gauss2D, Gauss2Dz
-
-# plotting
-from dphplotting import display_grid
+from scipy.ndimage.measurements import find_objects, label
 
 # specialty numpy and scipy imports
 from scipy.signal import argrelmax
 from scipy.spatial import cKDTree
-from dphutils import fft_gaussian_filter, slice_maker, mode
-import tqdm
-import dask
+from skimage._shared.utils import check_nD
 
-import logging
+# the difference of Gaussians algorithm
+from skimage.draw import circle
+from skimage.feature.peak import peak_local_max
+from skimage.util import img_as_float
+
+# import our 2D gaussian fitting class
+from .gauss2d import Gauss2D, Gauss2Dz
 
 logger = logging.getLogger(__name__)
 
@@ -527,21 +528,23 @@ class PeakFinder(object):
         fig, ax = plt.subplots(1, 1, figsize=(size, size * ny / nx))
 
         ax.matshow(self.data, **kwargs)
-        for i, blob in enumerate(self.blobs):
-            y, x, s, r = blob
-            if diameter is None:
-                diameter = s * 4
 
-            c = plt.Circle(
-                (x, y),
-                radius=diameter / 2,
-                color="r",
-                linewidth=1,
-                fill=False,
-                transform=ax.transData,
-            )
-            ax.add_patch(c)
-            if with_labels:
+        if with_labels:
+            for i, blob in enumerate(self.blobs):
+                y, x, s, r = blob
+                if diameter is None:
+                    diameter = s * 4
+
+                c = plt.Circle(
+                    (x, y),
+                    radius=diameter / 2,
+                    color="r",
+                    linewidth=1,
+                    fill=False,
+                    transform=ax.transData,
+                )
+                ax.add_patch(c)
+
                 if not np.issubdtype(float, self.data.dtype):
                     r = int(r)
                     fmtstr = "{}"
@@ -557,6 +560,15 @@ class PeakFinder(object):
                     backgroundcolor=(1, 1, 1, 0.5),
                     xycoords="data",
                 )
+        else:
+            ax.scatter(
+                self.blobs[:, 1],
+                self.blobs[:, 0],
+                s=self.blobs[:, 2] * 10,
+                marker="o",
+                facecolor="none",
+                edgecolor="w",
+            )
 
         return fig, ax
 
@@ -597,7 +609,7 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6, threshold
     -----
         The radius of each blob is approximately :math:`\sqrt{2}sigma`.
     """
-    assert_nD(image, 2)
+    check_nD(image, 2)
 
     image = img_as_float(image)
     sigma_ratio = float(sigma_ratio)
