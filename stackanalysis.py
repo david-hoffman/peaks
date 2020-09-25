@@ -1,34 +1,35 @@
 """
 A set of classes for analyzing data stacks that contain punctate data
 """
+import itertools as itt
+import multiprocessing as mp
 import os
 
 # import time
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import itertools as itt
-import multiprocessing as mp
-from scipy.optimize import curve_fit
-from scipy import ndimage as ndi
-from scipy.ndimage.filters import median_filter
+from dphplotting import clean_grid, make_grid
+from dphutils import slice_maker
 from matplotlib import pyplot as plt
 from matplotlib.colors import ColorConverter
+from scipy import ndimage as ndi
+from scipy.fftpack import fft
+from scipy.ndimage.filters import median_filter
+from scipy.optimize import curve_fit
+
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
-from .utils import gauss_fit, sine, sine_jac, scatterplot, sine2, sine_fit, gauss
-from scipy.fftpack import fft
-from dphutils import slice_maker
-from dphplotting import make_grid, clean_grid
+from .utils import gauss, gauss_fit, scatterplot, sine, sine2, sine_fit, sine_jac
 
 try:
-    from pyfftw.interfaces.numpy_fft import rfftn, rfftfreq
     import pyfftw
+    from pyfftw.interfaces.numpy_fft import rfftfreq, rfftn
 
     # Turn on the cache for optimum performance
     pyfftw.interfaces.cache.enable()
 except ImportError:
-    from numpy.fft import rfftn, rfftfreq
+    from numpy.fft import rfftfreq, rfftn
 
 # TODO
 # Need to move all the fitting stuff into its own class and abstract as much

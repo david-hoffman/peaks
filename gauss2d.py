@@ -14,28 +14,29 @@ Supports parameter passing through dicts and tuples.
 Copyright (c) 2016, David Hoffman
 """
 
+import logging
+
 # need to be able to deal with warnings
 import warnings
 
 # numpy for numerical
 import numpy as np
-
-# need measure to take image moments
-from skimage.measure import moments
+from dphutils.lm import curve_fit
 
 # need basic curve fitting
 from scipy.optimize import OptimizeWarning
 
+# need measure to take image moments
+from skimage.measure import moments
+
 # need to detrend data before estimating parameters
 from .utils import detrend, find_real_root_near_zero
-from dphutils.lm import curve_fit
 
 # Eventually we'll want to abstract the useful, abstract bits of this
 # class to a parent class called peak that will allow for multiple types
 # of fits
 # rho = cos(theta)
 
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,7 @@ class Gauss2D(object):
 
         if not abs(rho) < 1:
             rho = np.sign(rho) * 0.9999
-            warnings.warn(
+            logger.warning(
                 "rho cannot be greater than 1 or less than -1. Here rho is {}.".format(rho)
                 + "\nCoercing to {}".format(rho)
             )
