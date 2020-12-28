@@ -9,7 +9,7 @@ Copyright (c) 2016, David Hoffman
 
 from nose.tools import *
 import warnings
-from skimage.external import tifffile as tif
+import tifffile as tif
 from peaks.gauss2d import Gauss2D
 import os
 import numpy as np

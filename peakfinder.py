@@ -11,9 +11,6 @@ Copyright (c) 2016, David Hoffman
 
 import logging
 
-# We want to be able to warn the user about potential problems
-import warnings
-
 # need math log too, for arbitrary base
 from math import log
 
@@ -244,7 +241,7 @@ class PeakFinder(object):
 
         # if no peaks found alert the user, but don't break their program
         if blobs is None or len(blobs) == 0:
-            warnings.warn("No peaks found", UserWarning)
+            logger.warning("No peaks found")
 
         else:
             # blobs, as returned, has the third index as the estimated width
@@ -279,7 +276,7 @@ class PeakFinder(object):
             blobs = self.find_blobs()
             # if blobs is still none, exit
             if blobs is None:
-                warnings.warn("Labels could not be generated", UserWarning)
+                logger.warning("Labels could not be generated")
                 return None
 
         # Need to make this an ellipse using both sigmas and angle
@@ -293,7 +290,7 @@ class PeakFinder(object):
 
         labels, num_labels = label(tolabel)
         if num_labels != len(blobs):
-            warnings.warn("Blobs have melded, fitting may be difficult", UserWarning)
+            logger.warning("Blobs have melded, fitting may be difficult")
 
         self._labels = labels
 
@@ -635,11 +632,12 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6, threshold
         threshold_rel=0.0,
         exclude_border=False,
     )
-    # Convert local_maxima to float64
-    lm = local_maxima.astype(np.float64)
-    # Convert the last index to its corresponding scale value
-    lm[:, 2] = sigma_list[local_maxima[:, 2]]
-    local_maxima = lm
+    if local_maxima.size:
+        # Convert local_maxima to float64
+        lm = local_maxima.astype(np.float64)
+        # Convert the last index to its corresponding scale value
+        lm[:, 2] = sigma_list[local_maxima[:, 2]]
+        local_maxima = lm
     return local_maxima
 
 

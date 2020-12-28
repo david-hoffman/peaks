@@ -92,7 +92,12 @@ class StackAnalyzer(object):
             # so it's very fast but has no checking
             mv_array = memoryview(shared_array_base)
             # we have to cast through bytes because of Py3 peculiarities
-            mv_array.cast("B").cast(dtype_char)[:] = self.stack.ravel()
+            try:
+                mv_array.cast("B").cast(dtype_char)[:] = self.stack.ravel()
+            except ValueError as err:
+                # sometimes the endianess is messed up, hence the astype call
+                logger.warning(f"Endianess error? {dtype_char} != {self.stack.dtype}? {err}")
+                mv_array.cast("B").cast(dtype_char)[:] = self.stack.astype(dtype_char).ravel()
             # start pool, initilize shared array on each worker.
             with mp.Pool(nproc, _init_func, (par_func, shared_array_base, self.stack.shape)) as p:
                 if not quiet:
@@ -227,7 +232,10 @@ class PSFStackAnalyzer(StackAnalyzer):
         params = super()._calc_params(
             nproc=nproc, par_func=_calc_psf_param, subrange=subrange, **kwargs
         )
-        self.psf_params = pd.DataFrame(params).set_index("peak_num")
+        psf_params = pd.DataFrame(params)
+        if not psf_params.empty:
+            psf_params = psf_params.set_index("peak_num")
+        self.psf_params = psf_params
         return self.psf_params
 
     def plot_psf_params(self, feature="z0", **kwargs):
@@ -360,7 +368,7 @@ class SIMStackAnalyzer(StackAnalyzer):
             nphases=self.nphases,
             modtype=modtype,
             fit_func=fit_func,
-            **kwargs
+            **kwargs,
         )
         sim_params = pd.DataFrame(list(itt.chain.from_iterable(params)))
         if len(sim_params):
@@ -386,7 +394,7 @@ class SIMStackAnalyzer(StackAnalyzer):
                 orient.x0.values,
                 ax=ax[i],
                 fig=fig,
-                **kwargs
+                **kwargs,
             )
             ax[i].set_title(
                 "Orientation {}, avg mod = {:.3f}".format(name, orient.modulation.mean())

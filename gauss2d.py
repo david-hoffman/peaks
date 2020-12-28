@@ -569,6 +569,10 @@ class Gauss2D(object):
                 for k, v in errors.items():
                     if v in self.errmsg:
                         self.ier = k
+            except ValueError as e:
+                # This except is for bounds checking gone awry
+                self.errmsg = str(e)
+                self.ier = -1
             else:
                 # if we save the infodict as well then we'll start using a lot
                 # of memory
