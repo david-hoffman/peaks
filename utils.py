@@ -325,7 +325,18 @@ def grid(x, y, z, resX=1000, resY=1000, method="cubic"):
     return X, Y, Z
 
 
-def scatterplot(z, y, x, ax=None, fig=None, cmap="plasma", **kwargs):
+def scatterplot(
+    z,
+    y,
+    x,
+    ax=None,
+    fig=None,
+    cmap="plasma",
+    plot_points=True,
+    plot_lines=True,
+    cbar_name=None,
+    **kwargs
+):
     """A way to make a nice scatterplot with contours."""
     if fig is None or ax is None:
         fig, ax = plt.subplots(1, 1, squeeze=True, figsize=(6, 6))
@@ -341,26 +352,32 @@ def scatterplot(z, y, x, ax=None, fig=None, cmap="plasma", **kwargs):
 
     X, Y, Z = grid(x, y, z, **grid_kwargs)
 
-    mymax = np.nanmax(z)
-    mymin = np.nanmin(z)
+    mymax = kwargs.pop("vmax", np.nanmax(z))
+    mymin = kwargs.pop("vmin", np.nanmin(z))
 
     # conts=np.linspace(mymin, mymax, 20, endpoint=True)
     conts1 = np.linspace(mymin, mymax, 30)
     conts2 = np.linspace(mymin, mymax, 10)
     s = ax.contourf(X, Y, Z, conts1, origin="upper", cmap=cmap, zorder=0, **kwargs)
-    ax.contour(X, Y, Z, conts2, colors="k", origin="upper", zorder=1)
+    if plot_lines:
+        ax.contour(X, Y, Z, conts2, colors="k", origin="upper", zorder=1)
 
-    # if there's more than 100 beads to fit then don't make spots
-    if len(x) > 100:
-        scatter_kwargs = dict(marker=".")
-    else:
-        scatter_kwargs = dict(marker="o", edgecolors="b", linewidths=1)
+    if plot_points:
+        # if there's more than 100 beads to fit then don't make spots
+        if len(x) > 100:
+            scatter_kwargs = dict(marker=".")
+        else:
+            scatter_kwargs = dict(marker="o", edgecolors="b", linewidths=1)
 
-    ax.scatter(x, y, c="c", zorder=2, **scatter_kwargs)
-    ax.invert_yaxis()
+        ax.scatter(x, y, c="c", zorder=2, **scatter_kwargs)
+        ax.invert_yaxis()
+
     the_divider = make_axes_locatable(ax)
     color_axis = the_divider.append_axes("right", size="5%", pad=0.1)
-    plt.colorbar(s, cax=color_axis)
+    cax = plt.colorbar(s, cax=color_axis,)
+    if cbar_name is not None:
+        cax.set_label(cbar_name)
+
     return fig, ax
 
 

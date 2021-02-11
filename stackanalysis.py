@@ -216,6 +216,8 @@ class PSFStackAnalyzer(StackAnalyzer):
     """
 
     def __init__(self, stack, psfwidth=1.68, **kwargs):
+        if len(stack) < 3:
+            logger.warning(f"Stack depth is only {len(stack)}!")
         super().__init__(stack)
         self.psfwidth = psfwidth
         # median filter to remove spikes
