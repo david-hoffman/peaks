@@ -1,0 +1,5 @@
+# Auto detect text files and perform LF normalization
+* text=auto
+# ignore notebooks for linguist
+*.ipynb linguist-documentation
+*.html linguist-documentation

@@ -211,9 +211,7 @@ class StackAnalyzer(object):
 
 
 class PSFStackAnalyzer(StackAnalyzer):
-    """
-    A specialized version of StackAnalyzer for PSF stacks.
-    """
+    """A specialized version of StackAnalyzer for PSF stacks."""
 
     def __init__(self, stack, psfwidth=1.68, **kwargs):
         if len(stack) < 3:
@@ -230,7 +228,7 @@ class PSFStackAnalyzer(StackAnalyzer):
         return super().fitPeaks(fitwidth, nproc, par_func=_fitPeaks_psf, **kwargs)
 
     def calc_psf_params(self, nproc=0, subrange=slice(None, None, None), **kwargs):
-        """Calculate the PSF paramters for all found peaks"""
+        """Calculate the PSF paramters for all found peaks."""
         params = super()._calc_params(
             nproc=nproc, par_func=_calc_psf_param, subrange=subrange, **kwargs
         )
@@ -661,7 +659,7 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
 
 
 def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
-    """Fitting subfucntion for PSFStackAnalyzer"""
+    """Fitting subfunction for PSFStackAnalyzer"""
     # check if we're being dispatched from the multiprocessing pool
     if stack is None:
         stack = _fitPeaks_psf.stack
@@ -789,7 +787,8 @@ def _fitPeaks_sim(fitwidth, blob, stack, **kwargs):
             fit = Gauss2D(myslice)
 
             # do the fit, using the guess_parameters
-            fit.optimize_params(guess_params=guess_params, **kwargs)
+            with np.errstate(all="ignore"):
+                fit.optimize_params(guess_params=guess_params, **kwargs)
 
             # get the optimized parameters as a dict
             opt = fit.all_params_dict()

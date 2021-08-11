@@ -249,10 +249,10 @@ class PeakFinder(object):
             # at the estimated center as well
 
             footprint = np.round(self.blob_sigma * 5)
-            max_img = maximum_filter(self.data, footprint)
+            max_img = maximum_filter(data, footprint)
             # we just use mode, faster and more accurate for low
             # background images.
-            diff_img = max_img - mode(self.data.astype(int))
+            diff_img = max_img - mode(data.astype(int))
 
             y, x, s = blobs.T
 

@@ -123,7 +123,7 @@ class Gauss2D(object):
             return True
 
     @property
-    def guess_params():
+    def guess_params(self):
         """Guessed parameters"""
         return self._guess_params.copy()
 
