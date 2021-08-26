@@ -27,7 +27,7 @@ import pandas as pd
 import tqdm
 
 # plotting
-from dphplotting import display_grid
+from dphtools.display import display_grid
 from dphtools.utils import fft_gaussian_filter, mode, slice_maker
 
 # ndimage imports
