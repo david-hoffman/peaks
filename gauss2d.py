@@ -21,7 +21,7 @@ import warnings
 
 # numpy for numerical
 import numpy as np
-from dphutils.lm import curve_fit
+from dphtools.utils.lm import curve_fit
 
 # need basic curve fitting
 from scipy.optimize import OptimizeWarning

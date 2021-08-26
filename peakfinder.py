@@ -28,7 +28,7 @@ import tqdm
 
 # plotting
 from dphplotting import display_grid
-from dphutils import fft_gaussian_filter, mode, slice_maker
+from dphtools.utils import fft_gaussian_filter, mode, slice_maker
 
 # ndimage imports
 from scipy.ndimage import (

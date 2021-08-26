@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from dphplotting import clean_grid, make_grid
-from dphutils import slice_maker
+from dphtools.utils import slice_maker
 from matplotlib import pyplot as plt
 from matplotlib.colors import ColorConverter
 from scipy import ndimage as ndi
