@@ -9,11 +9,8 @@ results.
 Copyright (c) 2016, David Hoffman
 """
 
-import logging
-
 # need math log too, for arbitrary base
 from math import log
-
 import dask
 
 # we need a few extra features from matplot lib
@@ -52,9 +49,7 @@ from skimage.util import img_as_float
 
 # import our 2D gaussian fitting class
 from .gauss2d import Gauss2D, Gauss2Dz
-
-logger = logging.getLogger(__name__)
-
+from loguru import logger
 from dask.diagnostics import ProgressBar
 
 
@@ -418,27 +413,27 @@ class PeakFinder(object):
 
     def prune_blobs(self, radius):
         """
-            Pruner method takes blobs list with the third column replaced by
-            intensity instead of sigma and then removes the less intense blob
-            if its within diameter of a more intense blob.
+        Pruner method takes blobs list with the third column replaced by
+        intensity instead of sigma and then removes the less intense blob
+        if its within diameter of a more intense blob.
 
-            Adapted from _prune_blobs in skimage.feature.blob
+        Adapted from _prune_blobs in skimage.feature.blob
 
-            Parameters
-            ----------
-            blobs : ndarray
-                A 2d array with each row representing 3 values,
-                `(y, x, intensity)` where `(y, x)` are coordinates
-                of the blob and `intensity` is the intensity of the
-                blob (value at (x, y)).
-            diameter : float
-                Allowed spacing between blobs
+        Parameters
+        ----------
+        blobs : ndarray
+            A 2d array with each row representing 3 values,
+            `(y, x, intensity)` where `(y, x)` are coordinates
+            of the blob and `intensity` is the intensity of the
+            blob (value at (x, y)).
+        diameter : float
+            Allowed spacing between blobs
 
-            Returns
-            -------
-            A : ndarray
-                `array` with overlapping blobs removed.
-            """
+        Returns
+        -------
+        A : ndarray
+            `array` with overlapping blobs removed.
+        """
 
         # make a copy of blobs otherwise it will be changed
         # create the tree
@@ -614,7 +609,7 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6, threshold
     k = int(log(float(max_sigma) / min_sigma, sigma_ratio)) + 1
 
     # a geometric progression of standard deviations for gaussian kernels
-    sigma_list = np.array([min_sigma * (sigma_ratio ** i) for i in range(k + 1)])
+    sigma_list = np.array([min_sigma * (sigma_ratio**i) for i in range(k + 1)])
 
     # Use the faster fft_gaussian_filter to speed things up.
     gaussian_images = [fft_gaussian_filter(image, s) for s in sigma_list]

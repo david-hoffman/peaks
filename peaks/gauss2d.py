@@ -14,8 +14,6 @@ Supports parameter passing through dicts and tuples.
 Copyright (c) 2016, David Hoffman
 """
 
-import logging
-
 # need to be able to deal with warnings
 import warnings
 
@@ -36,9 +34,7 @@ from .utils import detrend, find_real_root_near_zero
 # class to a parent class called peak that will allow for multiple types
 # of fits
 # rho = cos(theta)
-
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class Gauss2D(object):
@@ -187,7 +183,7 @@ class Gauss2D(object):
             + ((x1 - mu1) / sigma1) ** 2
         )
 
-        g = offset + amp * np.exp(-z / (2 * (1 - rho ** 2)))
+        g = offset + amp * np.exp(-z / (2 * (1 - rho**2)))
         return g
 
     @classmethod
@@ -246,45 +242,45 @@ class Gauss2D(object):
 
         dydmu0 = (
             value
-            * ((2 * (x0 - mu0)) / sigma0 ** 2 - (2 * rho * (x1 - mu1)) / (sigma0 * sigma1))
-            / (2 * (1 - rho ** 2))
+            * ((2 * (x0 - mu0)) / sigma0**2 - (2 * rho * (x1 - mu1)) / (sigma0 * sigma1))
+            / (2 * (1 - rho**2))
         )
 
         dydmu1 = (
             value
-            * ((2 * (x1 - mu1)) / sigma1 ** 2 - (2 * rho * (x0 - mu0)) / (sigma0 * sigma1))
-            / (2 * (1 - rho ** 2))
+            * ((2 * (x1 - mu1)) / sigma1**2 - (2 * rho * (x0 - mu0)) / (sigma0 * sigma1))
+            / (2 * (1 - rho**2))
         )
 
         dydsigma0 = (
             value
             * (
-                ((x0 - mu0) ** 2 / sigma0 ** 3)
-                - ((2 * rho * (x0 - mu0) * (x1 - mu1)) / (sigma0 ** 2 * sigma1))
+                ((x0 - mu0) ** 2 / sigma0**3)
+                - ((2 * rho * (x0 - mu0) * (x1 - mu1)) / (sigma0**2 * sigma1))
             )
-            / (2 * (1 - rho ** 2))
+            / (2 * (1 - rho**2))
         )
 
         dydsigma1 = (
             value
             * (
-                ((x1 - mu1) ** 2 / sigma1 ** 3)
-                - ((2 * rho * (x0 - mu0) * (x1 - mu1)) / (sigma1 ** 2 * sigma0))
+                ((x1 - mu1) ** 2 / sigma1**3)
+                - ((2 * rho * (x0 - mu0) * (x1 - mu1)) / (sigma1**2 * sigma0))
             )
-            / (2 * (1 - rho ** 2))
+            / (2 * (1 - rho**2))
         )
 
         dydrho = value * (
-            ((x0 - mu0) * (x1 - mu1)) / ((1 - rho ** 2) * sigma0 * sigma1)
+            ((x0 - mu0) * (x1 - mu1)) / ((1 - rho**2) * sigma0 * sigma1)
             + (
                 rho
                 * (
-                    -((x0 - mu0) ** 2 / sigma0 ** 2)
+                    -((x0 - mu0) ** 2 / sigma0**2)
                     + (2 * rho * (x0 - mu0) * (x1 - mu1)) / (sigma0 * sigma1)
-                    - (x1 - mu1) ** 2 / sigma1 ** 2
+                    - (x1 - mu1) ** 2 / sigma1**2
                 )
             )
-            / ((1 - rho ** 2) ** 2)
+            / ((1 - rho**2) ** 2)
         )
         # now return
         return np.vstack(
@@ -299,10 +295,10 @@ class Gauss2D(object):
         amp, x0, y0, sigma_x, sigma_y, offset = params
         value = cls.gauss2D_norot(xdata, *params).ravel() - offset
         dydamp = value / amp
-        dydx0 = value * (x - x0) / sigma_x ** 2
-        dydsigmax = value * (x - x0) ** 2 / sigma_x ** 3
-        dydy0 = value * (y - y0) / sigma_y ** 2
-        dydsigmay = value * (y - y0) ** 2 / sigma_y ** 3
+        dydx0 = value * (x - x0) / sigma_x**2
+        dydsigmax = value * (x - x0) ** 2 / sigma_x**3
+        dydy0 = value * (y - y0) / sigma_y**2
+        dydsigmay = value * (y - y0) ** 2 / sigma_y**3
         return np.vstack((dydamp, dydx0, dydy0, dydsigmax, dydsigmay, np.ones_like(value))).T
         # the below works, but speed up only for above
         # new_params = np.insert(params, 5, 0)
@@ -316,9 +312,9 @@ class Gauss2D(object):
         amp, x0, y0, sigma_x, offset = params
         value = cls.gauss2D_sym(xdata, *params).ravel() - offset
         dydamp = value / amp
-        dydx0 = value * (x - x0) / sigma_x ** 2
-        dydsigmax = value * (x - x0) ** 2 / sigma_x ** 3
-        dydy0 = value * (y - y0) / sigma_x ** 2
+        dydx0 = value * (x - x0) / sigma_x**2
+        dydsigmax = value * (x - x0) ** 2 / sigma_x**3
+        dydy0 = value * (y - y0) / sigma_x**2
         return np.vstack((dydamp, dydx0, dydy0, dydsigmax, np.ones_like(value))).T
         # new_params = np.insert(params, 4, 0)
         # new_params = np.insert(new_params, 4, params[3])
@@ -441,7 +437,7 @@ class Gauss2D(object):
             The initial guesses for the model parameters. The number of
             parameters determines the modeltype (see notes). If no
             guesses are provided they will be estimated from the data.
-            The estimation is only valid for positive data 
+            The estimation is only valid for positive data
         modeltype : {'sym', 'norot', 'full'}, default 'norot'
             Determines the model to guess parameters for
         fittype : {'ls', 'mle'}, default 'ls'
@@ -601,8 +597,7 @@ class Gauss2D(object):
             self._popt = popt
             self._pcov = pcov
         else:
-            if not quiet:
-                logger.warning("Fitting error: " + self.errmsg)
+            logger.debug("Fitting error: " + self.errmsg)
 
             self._popt = guess_params * np.nan
             self._pcov = np.zeros((len(guess_params), len(guess_params))) * np.nan
@@ -699,8 +694,8 @@ class Gauss2D(object):
             # https://en.wikipedia.org/wiki/Image_moment# Central_moments
             xbar = M[1, 0] / M[0, 0]
             ybar = M[0, 1] / M[0, 0]
-            xvar = M[2, 0] / M[0, 0] - xbar ** 2
-            yvar = M[0, 2] / M[0, 0] - ybar ** 2
+            xvar = M[2, 0] / M[0, 0] - xbar**2
+            yvar = M[0, 2] / M[0, 0] - ybar**2
             covar = M[1, 1] / M[0, 0] - xbar * ybar
 
             # place the model parameters in the return array
@@ -923,11 +918,11 @@ class Gauss2Dz(Gauss2D):
         value = self.model(xdata_tuple, *params).ravel() - offset
         dydamp = value / amp
 
-        dydx0 = value * (x - x0) / sigma_x ** 2
-        dydsigmax = value * (x - x0) ** 2 / sigma_x ** 3
+        dydx0 = value * (x - x0) / sigma_x**2
+        dydsigmax = value * (x - x0) ** 2 / sigma_x**3
 
-        dydy0 = value * (y - y0) / sigma_y ** 2
-        dydsigmay = value * (y - y0) ** 2 / sigma_y ** 3
+        dydy0 = value * (y - y0) / sigma_y**2
+        dydsigmay = value * (y - y0) ** 2 / sigma_y**3
 
         dydz0 = dydsigmax * sigma_xd + dydsigmay * sigma_yd
 

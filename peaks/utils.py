@@ -121,7 +121,7 @@ def gauss_no_offset(x, amp, x0, sigma_x):
     result : ndarray
         A model of gaussian peak without offset
     """
-    return amp * np.exp(-((x - x0) ** 2) / (2 * sigma_x ** 2))
+    return amp * np.exp(-((x - x0) ** 2) / (2 * sigma_x**2))
 
 
 def gauss(x, amp, x0, sigma_x, offset):
@@ -374,7 +374,10 @@ def scatterplot(
 
     the_divider = make_axes_locatable(ax)
     color_axis = the_divider.append_axes("right", size="5%", pad=0.1)
-    cax = plt.colorbar(s, cax=color_axis,)
+    cax = plt.colorbar(
+        s,
+        cax=color_axis,
+    )
     if cbar_name is not None:
         cax.set_label(cbar_name)
 

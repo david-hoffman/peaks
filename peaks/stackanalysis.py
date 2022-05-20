@@ -35,10 +35,7 @@ except ImportError:
 # Need to move all the fitting stuff into its own class and abstract as much
 # functionality from gauss2d into a parent class that can be subclassed for
 # each type of peak. Hopefully regardless of dimensionality.
-
-import logging
-
-logger = logging.getLogger(__name__)
+from loguru import logger
 
 
 class StackAnalyzer(object):
@@ -720,7 +717,7 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
 
         return peakfits_df.set_index("slice").sort_index()
     else:
-        logger.warning("blob {} is unfittable".format(blob))
+        logger.debug(f"blob {blob} is unfittable")
         return None
 
 
