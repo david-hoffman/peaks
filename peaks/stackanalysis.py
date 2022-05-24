@@ -4,38 +4,39 @@ A set of classes for analyzing data stacks that contain punctate data
 import itertools as itt
 import multiprocessing as mp
 import os
+import warnings
 
-# import time
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from dphtools.display import clean_grid, make_grid
 from dphtools.utils import slice_maker
+from loguru import logger
 from matplotlib import pyplot as plt
 from matplotlib.colors import ColorConverter
+from numpy.fft import fft, rfftn
 from scipy import ndimage as ndi
-from scipy.fftpack import fft
 from scipy.ndimage.filters import median_filter
 from scipy.optimize import curve_fit
 
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
-from .utils import gauss, gauss_fit, scatterplot, sine, sine2, sine_fit, sine_jac
+from .utils import gauss, gauss_fit, scatterplot, sine, sine2, sine_fit
 
-try:
-    import pyfftw
-    from pyfftw.interfaces.numpy_fft import rfftfreq, rfftn
+showwarning_ = warnings.showwarning
 
-    # Turn on the cache for optimum performance
-    pyfftw.interfaces.cache.enable()
-except ImportError:
-    from numpy.fft import rfftfreq, rfftn
+
+def showwarning(message, *args, **kwargs):
+    logger.warning(message)
+    # showwarning_(message, *args, **kwargs)
+
+
+warnings.showwarning = showwarning
 
 # TODO
 # Need to move all the fitting stuff into its own class and abstract as much
 # functionality from gauss2d into a parent class that can be subclassed for
 # each type of peak. Hopefully regardless of dimensionality.
-from loguru import logger
 
 
 class StackAnalyzer(object):
@@ -835,8 +836,8 @@ def _calc_psf_param(fit, subrange=slice(None, None, None), **kwargs):
     # if the fit has not failed proceed
     if np.isfinite(popt).all():
         # pull fit parameters
-        keys = ("amp", "z0", "sigma_z", "offset")
-        famp, z0, sigma_z, offset = popt
+        keys = ("amp_z", "z0", "sigma_z", "offset_z")
+        amp_z, z0, sigma_z, offset = popt
 
         # interpolate other values (linear only)
         # x0 = np.interp(z0, z, x)
@@ -850,7 +851,7 @@ def _calc_psf_param(fit, subrange=slice(None, None, None), **kwargs):
         result.update(dict(zip(keys, popt)))
         # add errors
         result.update({k + "_e": v for k, v in zip(keys, np.diag(pcov))})
-        result["SNR"] = famp / noise
+        result["SNR_z"] = amp_z / noise
     else:
         result = None
     return result

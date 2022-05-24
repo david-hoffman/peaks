@@ -20,6 +20,7 @@ import warnings
 # numpy for numerical
 import numpy as np
 from dphtools.utils.lm import curve_fit
+from loguru import logger
 
 # need basic curve fitting
 from scipy.optimize import OptimizeWarning
@@ -30,11 +31,20 @@ from skimage.measure import moments
 # need to detrend data before estimating parameters
 from .utils import detrend, find_real_root_near_zero
 
+showwarning_ = warnings.showwarning
+
+
+def showwarning(message, *args, **kwargs):
+    logger.warning(message)
+    # showwarning_(message, *args, **kwargs)
+
+
+warnings.showwarning = showwarning
+
 # Eventually we'll want to abstract the useful, abstract bits of this
 # class to a parent class called peak that will allow for multiple types
 # of fits
 # rho = cos(theta)
-from loguru import logger
 
 
 class Gauss2D(object):
@@ -523,68 +533,65 @@ class Gauss2D(object):
                 bounds = (-1 * ub, ub)
             else:
                 bounds = (-np.inf, np.inf)
-        with warnings.catch_warnings():
-            # we'll catch this error later and alert the user with a printout
-            warnings.simplefilter("ignore", OptimizeWarning)
 
-            if fittype.lower() == "mle":
-                meth = "mle"
-            elif fittype.lower() == "ls":
-                # default to scipy
-                meth = None
-            else:
-                raise RuntimeError("fittype is not one of: 'ls', 'mle'")
-            try:
-                popt, pcov, infodict, errmsg, ier = curve_fit(
-                    model_ravel,
-                    (xx, yy),
-                    data.ravel(),
-                    p0=guess_params,
-                    bounds=bounds,
-                    full_output=True,
-                    jac=self.model_jac,
-                    method=meth,
-                )
-            except RuntimeError as e:
-                # print(e)
-                # now we need to re-parse the error message to set all the
-                # flags pull the message
-                self.errmsg = e.args[0].replace("Optimal parameters not found: ", "")
+        if fittype.lower() == "mle":
+            meth = "mle"
+        elif fittype.lower() == "ls":
+            # default to scipy
+            meth = None
+        else:
+            raise RuntimeError("fittype is not one of: 'ls', 'mle'")
+        try:
+            popt, pcov, infodict, errmsg, ier = curve_fit(
+                model_ravel,
+                (xx, yy),
+                data.ravel(),
+                p0=guess_params,
+                bounds=bounds,
+                full_output=True,
+                jac=self.model_jac,
+                method=meth,
+            )
+        except RuntimeError as e:
+            # print(e)
+            # now we need to re-parse the error message to set all the
+            # flags pull the message
+            self.errmsg = e.args[0].replace("Optimal parameters not found: ", "")
 
-                # run through possibilities for failure
-                errors = {
-                    0: "Improper",
-                    5: "maxfev",
-                    6: "ftol",
-                    7: "xtol",
-                    8: "gtol",
-                    "unknown": "Unknown",
-                }
+            # run through possibilities for failure
+            errors = {
+                0: "Improper",
+                5: "maxfev",
+                6: "ftol",
+                7: "xtol",
+                8: "gtol",
+                "unknown": "Unknown",
+            }
 
-                # set the error flag correctly
-                for k, v in errors.items():
-                    if v in self.errmsg:
-                        self.ier = k
-            except ValueError as e:
-                # This except is for bounds checking gone awry
-                self.errmsg = str(e)
-                self.ier = -1
-            else:
-                # if we save the infodict as well then we'll start using a lot
-                # of memory
-                # self.infodict = infodict
-                self.errmsg = errmsg
-                self.ier = ier
+            # set the error flag correctly
+            for k, v in errors.items():
+                if v in self.errmsg:
+                    self.ier = k
+        except ValueError as e:
+            # This except is for bounds checking gone awry
+            self.errmsg = str(e)
+            self.ier = -1
+        else:
+            # if we save the infodict as well then we'll start using a lot
+            # of memory
+            # self.infodict = infodict
+            self.errmsg = errmsg
+            self.ier = ier
 
-                if checkparams:
-                    self._check_params(popt)
+            if checkparams:
+                self._check_params(popt)
 
-                # check to see if the covariance is bunk
-                if not np.isfinite(pcov).all():
-                    self.errmsg = """
-                    Covariance of the parameters could not be estimated
-                    """
-                    self.ier = 9
+            # check to see if the covariance is bunk
+            if not np.isfinite(pcov).all():
+                self.errmsg = """
+                Covariance of the parameters could not be estimated
+                """
+                self.ier = 9
 
         # save parameters for later use
         # if the error flag is good, proceed
