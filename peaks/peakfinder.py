@@ -21,7 +21,6 @@ import numpy as np
 
 # need pandas for better data containers
 import pandas as pd
-import tqdm
 
 # plotting
 from dphtools.display import display_grid

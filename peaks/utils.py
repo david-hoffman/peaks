@@ -13,15 +13,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.interpolate import griddata
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn import linear_model
-
-try:
-    from pyfftw.interfaces.numpy_fft import rfftn, rfftfreq
-    import pyfftw
-
-    # Turn on the cache for optimum performance
-    pyfftw.interfaces.cache.enable()
-except ImportError:
-    from numpy.fft import rfftn, rfftfreq
+from numpy.fft import rfftn
 
 
 def detrend(data, degree=1):
