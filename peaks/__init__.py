@@ -18,4 +18,5 @@ from .peakfinder import PeakFinder
 from .stackanalysis import PSFStackAnalyzer, SIMStackAnalyzer
 
 from . import _version
-__version__ = _version.get_versions()['version']
+
+__version__ = _version.get_versions()["version"]
