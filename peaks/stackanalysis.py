@@ -839,11 +839,7 @@ def _calc_psf_param(fit, subrange=slice(None, None, None), **kwargs):
         keys = ("amp_z", "z0", "sigma_z", "offset_z")
         amp_z, z0, sigma_z, offset = popt
 
-        # interpolate other values (linear only)
-        # x0 = np.interp(z0, z, x)
-        # y0 = np.interp(z0, z, y)
-        # sigma_x = np.interp(z0, z, s_x)
-        # sigma_y = np.interp(z0, z, s_y)
+        # interpolate other values (linear only), including errors
         result = {k: np.interp(z0, z, tempfit[k]) for k in tempfit}
 
         noise = (tempfit.amp - gauss(z, *popt)).std()
