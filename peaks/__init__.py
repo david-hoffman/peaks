@@ -16,3 +16,6 @@ logger.disable(__name__)
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
 from .stackanalysis import PSFStackAnalyzer, SIMStackAnalyzer
+
+from . import _version
+__version__ = _version.get_versions()['version']

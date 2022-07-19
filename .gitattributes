@@ -3,3 +3,4 @@
 # ignore notebooks for linguist
 *.ipynb linguist-documentation
 *.html linguist-documentation
+peaks/_version.py export-subst
