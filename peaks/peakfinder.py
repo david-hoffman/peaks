@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 # peakfinder.py
 """
-Class for finding blobs. Encapsulates a difference of gaussians (DoG)
+Classes for finding blobs.
+
+Encapsulates a difference of gaussians (DoG)
 algorithm and exposes methods to easilyt interact with the data and
 results.
 
@@ -100,23 +102,20 @@ class PeakFinder(object):
 
     @property
     def data(self):
-        """
-        The data contained in the PeakFinder object
-        """
-
+        """Return data contained in the PeakFinder object."""
         # This attribute should be read-only, which means that it should return
         # a copy of the data not a pointer.
         return self._data
 
     @property
     def fits(self):
-        """Optimized parameters from the fit"""
+        """Return optimized parameters from the fit."""
         # User should not be able to modify this, so return copy
         return self._fits.copy()
 
     @property
     def blobs(self):
-        """Estimated peak locations"""
+        """Return estimated peak locations."""
         # User should not be able to modify this, so return copy
         # sort blobs by the max amp value, descending
         blobs = self._blobs
@@ -139,15 +138,13 @@ class PeakFinder(object):
 
     @property
     def labels(self):
-        """
-        Estimated peak locations
-        """
+        """Return estimated peak locations."""
         # User should not be able to modify this, so return copy
         return self._labels.copy()
 
     @property
     def thresh(self):
-        """Threshold for peak detection"""
+        """Return threshold for peak detection."""
         return self._thresh
 
     @thresh.setter
@@ -156,7 +153,7 @@ class PeakFinder(object):
 
     @property
     def blob_sigma(self):
-        """Estimated Peak width"""
+        """Return estimated Peak width."""
         return self._blob_sigma
 
     @blob_sigma.setter
@@ -168,7 +165,7 @@ class PeakFinder(object):
     ###########
 
     def estimate_background(self, method="median"):
-        """Estimate the background/threshold of the data
+        """Estimate the background/threshold of the data.
 
         Two methods are available:
         - "median" : calculates median value of data as thresh
@@ -196,8 +193,7 @@ class PeakFinder(object):
         logger.debug("Threshold = {}".format(self.thresh))
 
     def find_blobs(self, method="dog", **kwargs):
-        """
-        Estimate peak locations by using a difference of Gaussians algorithm
+        """Estimate peak locations by using a difference of Gaussians algorithm.
 
         Parameters
         ----------
@@ -256,12 +252,10 @@ class PeakFinder(object):
         return self.blobs
 
     def label_blobs(self, diameter=None):
-        """
-        This function will create a labeled image from blobs
-        essentially it will be circles at each location with diameter of
-        4 sigma
-        """
+        """Create a labeled image from blobs.
 
+        essentially it will be circles at each location with diameter of 4 sigma
+        """
         tolabel = np.zeros_like(self.data)
         try:
             blobs = self.blobs
@@ -291,7 +285,7 @@ class PeakFinder(object):
         return labels
 
     def plot_blob_grid(self, window=11, **kwargs):
-        """Display a grid of blobs"""
+        """Display a grid of blobs."""
         return display_grid(
             {
                 i: self.data[slice_maker((y, x), window)]
@@ -301,8 +295,7 @@ class PeakFinder(object):
         )
 
     def plot_fits(self, window_width, residuals=False, **kwargs):
-        """Generate a plot of the found peaks, individually"""
-
+        """Generate a plot of the found peaks, individually."""
         # check if the fitting has been performed yet, warn user if it hasn't
         if self._fits is None:
             raise RuntimeError("Blobs have not been fit yet, cannot show fits")
@@ -353,6 +346,7 @@ class PeakFinder(object):
         return fig, axes
 
     def filter_blobs(self, minamp=None, maxamp=None):
+        """Filter blobs based on amplitude."""
         amps = self.blobs[:, 3]
         if maxamp is None:
             maxamp = amps.max()
@@ -366,6 +360,7 @@ class PeakFinder(object):
 
     def fit_blobs(self, width=10, poly_coefs_df=None, **kwargs):
         """Fit blobs to Gaussian funtion.
+
         Parameters
         ----------
         width : int
@@ -411,7 +406,8 @@ class PeakFinder(object):
     fit_blobs.__doc__ += Gauss2D.optimize_params.__doc__
 
     def prune_blobs(self, radius):
-        """
+        """Remove blobs that interfere with one another.
+
         Pruner method takes blobs list with the third column replaced by
         intensity instead of sigma and then removes the less intense blob
         if its within diameter of a more intense blob.
@@ -433,7 +429,6 @@ class PeakFinder(object):
         A : ndarray
             `array` with overlapping blobs removed.
         """
-
         # make a copy of blobs otherwise it will be changed
         # create the tree
         blobs = self.blobs
@@ -471,8 +466,7 @@ class PeakFinder(object):
         return self.blobs
 
     def remove_edge_blobs(self, distance):
-        """Remove blobs that are less than `distance` away from the image
-        edge"""
+        """Remove blobs that are less than `distance` away from the image edge."""
         # find the maximum limits of the data
         ymax, xmax = self._data.shape
         # build a new array filtering out any blobs that are two close to
@@ -495,7 +489,7 @@ class PeakFinder(object):
         return self.blobs
 
     def plot_blobs(self, diameter=None, size=6, with_labels=True, **kwargs):
-        """Plot the found blobs
+        """Plot the found blobs.
 
         Parameters
         ----------
@@ -565,10 +559,12 @@ class PeakFinder(object):
 
 
 def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6, threshold=0.03):
-    """Finds blobs in the given grayscale image.
+    r"""Find blobs in the given grayscale image.
+
     Blobs are found using the Difference of Gaussian (DoG) method [1]_.
     For each blob found, the method returns its coordinates and the standard
     deviation of the Gaussian kernel that detected the blob.
+
     Parameters
     ----------
     image : ndarray
@@ -587,15 +583,18 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6, threshold
         The absolute lower bound for scale space maxima. Local maxima smaller
         than thresh are ignored. Reduce this to detect blobs with less
         intensities.
+
     Returns
     -------
     A : (n, 3) ndarray
         A 2d array with each row representing 3 values, ``(y, x, sigma)``
         where ``(y, x)`` are coordinates of the blob and ``sigma`` is the
         standard deviation of the Gaussian kernel which detected the blob.
+
     References
     ----------
     .. [1] http://en.wikipedia.org/wiki/Blob_detection# The_difference_of_Gaussians_approach
+
     Notes
     -----
         The radius of each blob is approximately :math:`\sqrt{2}sigma`.
@@ -641,9 +640,7 @@ def better_blob_dog(image, min_sigma=1, max_sigma=50, sigma_ratio=1.6, threshold
 
 
 class SpectralPeakFinder(object):
-    """
-    A class used to find peaks in data that has one spatial and one spectral
-    and one time dimension
+    """A class used to find peaks in data that has one spatial and one spectral and one time dimension.
 
     Data is assumed to have dimensions time (0), space (1), spectral (2)
     """
@@ -652,9 +649,7 @@ class SpectralPeakFinder(object):
     # variables or methods from the user.
 
     def __init__(self, data):
-        """
-        A class designed to find peaks in spectral/spatial/time data
-        """
+        """Find peaks in spectral/spatial/time data."""
         if not isinstance(data, np.ndarray):
             raise TypeError("data is not a numpy array")
 
@@ -667,8 +662,7 @@ class SpectralPeakFinder(object):
         self.peaks = None
 
     def remove_background(self):
-        """
-        Remove background from the data cube.
+        """Remove background from the data cube.
 
         This method uses a relatively simple algorithm that first takes the
         mean along the time dimension and then the median along the spatial
@@ -692,8 +686,7 @@ class SpectralPeakFinder(object):
         self.data = data - bg
 
     def fix_hot_pixels(self, cutoff=9):
-        """
-        A method to remove "Salt and Pepper" noise from the image stack
+        """Remove "Salt and Pepper" noise from the image stack.
 
         This method assumes that hot pixels do not vary much with time and uses
         this property to avoid performing a median filter for every time point.
@@ -731,8 +724,7 @@ class SpectralPeakFinder(object):
         return np.count_nonzero(picked_points)
 
     def fix_cosmic_rays(self, width, z_score_cutoff=2.5):
-        """
-        Method to remove cosmic rays from good peaks.
+        """Remove cosmic rays from good peaks.
 
         Assumes that cosmic rays only show up for one frame and are *bright*
         """
@@ -744,8 +736,7 @@ class SpectralPeakFinder(object):
         self.peaks = [p for p in self.peaks if p not in bad_peaks]
 
     def calc_FoM(self, width, s_lambda=3, s_time=3, use_max=False):
-        """
-        Calculate the figure of merit (FoM) of a dataset (t, x, and lambda)
+        """Calculate the figure of merit (FoM) of a dataset (t, x, and lambda).
 
         In this case our figure of merit is calculated as the _maximum_ value
         along the spectral dimension aver the
@@ -771,7 +762,6 @@ class SpectralPeakFinder(object):
         FoM : ndarray (NxK)
             The calculated figure of merit (FoM)
         """
-
         # before we make another copy we should trash the old one, if it exists
         # if we don't do this it can lead to a memory leak.
         try:
@@ -807,10 +797,7 @@ class SpectralPeakFinder(object):
         self.g_mean_data = g_mean_data
 
     def find_peaks(self, width, cutoff=7, cutoff_high=np.inf, presmooth=0, show=False):
-        """
-        A function that finds peaks in the FoM trace.
-        """
-
+        """Find peaks in the FoM trace."""
         # find the local maxima in the SNR trace
         # presmooth might make sense here
         if presmooth:
@@ -849,8 +836,7 @@ class SpectralPeakFinder(object):
         self.peaks = good_peaks
 
     def refine_peaks(self, window_width=8):
-        """
-        A function that refines peaks.
+        """Refine peaks.
 
         Because of the way the FoM is calculated the highest SNR region isn't
         identified because the noise is approximated by the std. This function
@@ -882,10 +868,7 @@ class SpectralPeakFinder(object):
         self.peaks = np.array(new_peaks)
 
     def _plot_peaks_lines(self):
-        """
-        A helper function to plot a max intensity projection with redlines
-        marking the location of the found peaks.
-        """
+        """Plot a max intensity projection with redlines marking the location of the found peaks."""
         figmat, axmat = plt.subplots(1, 1, squeeze=True, sharex=True)
         axmat.matshow(self.data.max(0))
         axmat.set_yticks(self.peaks)
@@ -893,10 +876,7 @@ class SpectralPeakFinder(object):
             axmat.axhline(peak, color="r")
 
     def plot_peaks(self):
-        """
-        A utility function to plot the found peaks.
-        """
-
+        """Plot the found peaks."""
         peaks = self.peaks
         FoM = self.FoM
         g_mean_data = self.g_mean_data
@@ -931,9 +911,7 @@ class SpectralPeakFinder(object):
 
 
 class SpectralPeakFinder1d(SpectralPeakFinder):
-    """
-    A class to find peaks in a single frame.
-    """
+    """A class to find peaks in a single frame."""
 
     def __init__(self, data):
         # reshape the data so that it can use the previous methods without
@@ -942,10 +920,7 @@ class SpectralPeakFinder1d(SpectralPeakFinder):
 
     # overload the plot peaks function
     def plot_peaks(self):
-        """
-        A utility function to plot the found peaks.
-        """
-
+        """Plot the found peaks."""
         peaks = self.peaks
         FoM = self.FoM
         g_mean_data = self.g_mean_data
@@ -960,8 +935,5 @@ class SpectralPeakFinder1d(SpectralPeakFinder):
         return display_grid(data_dict)
 
     def fix_cosmic_rays(self, *args, **kwargs):
-        """
-        This method is invalid for this type of data
-        """
-
+        """Invalid method."""
         raise ValueError("This method is not valid for 1d data.")

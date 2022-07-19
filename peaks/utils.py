@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # utils.py
 """
-Utility functions for the `peaks` package
+Utility functions for the `peaks` package.
 
 Copyright (c) 2017, David Hoffman
 """
@@ -17,8 +17,7 @@ from numpy.fft import rfftn
 
 
 def detrend(data, degree=1):
-    """
-    Take 2D (i.e. image) data and remove the background using a polynomial fit
+    """Remove background from 2D (i.e. image) data using a polynomial fit.
 
     Eventually this will be generalized to data of any dimension and perhaps
 
@@ -34,7 +33,6 @@ def detrend(data, degree=1):
     out : tuple of ndarrays (NxM)
         (data without background and background)
     """
-
     x = np.arange(data.shape[1])
     y = np.arange(data.shape[0])
     xx, yy = np.meshgrid(x, y)
@@ -75,27 +73,13 @@ def detrend(data, degree=1):
     return data_nb, background
 
 
-def _ensure_positive(data):
-    """Make sure data is positive and has no zeros
-
-    For numerical stability
-
-    If we realize that mutating data is not a problem
-    and that changing in place could lead to signifcant
-    speed ups we can lose the data.copy() line"""
-    # make a copy of the data
-    data = data.copy()
-    data[data <= 0] = np.finfo(data.dtype).eps
-    return data
-
-
 def nmoment(x, counts, c, n):
-    """A helper function to calculate moments of histograms"""
+    """Calculate moments of histograms."""
     return np.sum((x - c) ** n * counts) / np.sum(counts)
 
 
 def gauss_no_offset(x, amp, x0, sigma_x):
-    """Helper function to fit 1D Gaussians without and offset
+    """Fit 1D Gaussians without and offset.
 
     Parameters
     ----------
@@ -117,7 +101,7 @@ def gauss_no_offset(x, amp, x0, sigma_x):
 
 
 def gauss(x, amp, x0, sigma_x, offset):
-    """Helper function to fit 1D Gaussians
+    """Fit 1D Gaussians.
 
     Parameters
     ----------
@@ -141,7 +125,7 @@ def gauss(x, amp, x0, sigma_x, offset):
 
 
 def gauss_fit(xdata, ydata, withoffset=True, trim=None, guess_z=None):
-    """Utility function for fitting single variable gaussian data
+    """Fit single variable gaussian data.
 
     Parameters
     ----------
@@ -194,12 +178,12 @@ def gauss_fit(xdata, ydata, withoffset=True, trim=None, guess_z=None):
 
 
 def sine(xdata, amp, freq, phase, offset):
-    """Utility function to fit nonlinearly"""
+    """Fit sine function nonlinearly."""
     return amp * np.cos(2 * np.pi * freq * xdata + phase) + offset
 
 
 def _estimate_sine_params(data, periods):
-    """utility to estimate sine params"""
+    """Estimate sine params."""
     # make guesses
     # amp of sine wave is sqrt(2) the standard deviation
     g_a = np.sqrt(2) * np.nanstd(data)
@@ -217,7 +201,7 @@ def _estimate_sine_params(data, periods):
 
 
 def sine_fit(data, periods):
-    """Utility function that fits data to the sine function
+    """Fit sine function to data.
 
     Assumes evenaly spaced data.
 
@@ -262,7 +246,7 @@ def sine_fit(data, periods):
 
 
 def sine2(xdata, amp, amp2, freq, phase, offset):
-    """Utility function to fit nonlinearly"""
+    """Sine function (for fitting)."""
     arg = 2 * np.pi * freq * xdata + phase
     result = amp * np.cos(2 * arg)
     result += amp2 * np.cos(arg)
@@ -271,7 +255,7 @@ def sine2(xdata, amp, amp2, freq, phase, offset):
 
 
 def _estimate_sine2_params(data, periods):
-    """utility to estimate sine params"""
+    """Estimate sine params."""
     data = np.nan_to_num(data)
     pnts = np.arange(3) * periods
     fft_data = rfftn(data)
@@ -285,13 +269,13 @@ def _estimate_sine2_params(data, periods):
 
 
 def cosine(xdata, amp, freq, phase, offset):
-    """Utility function to fit nonlinearly"""
+    """Cosine function."""
     phase += np.pi / 2
     return sine(xdata, amp, freq, phase, offset)
 
 
 def sine_jac(params, xdata, ydata, func):
-    """Jacobian for sine wave"""
+    """Jacobian for sine wave."""
     amp, freq, phase, offset = params
     # calculate the main value, minus offset
     # (derivative of constant is zero)
@@ -304,7 +288,7 @@ def sine_jac(params, xdata, ydata, func):
 
 
 def grid(x, y, z, resX=1000, resY=1000, method="cubic"):
-    """Convert 3 column data to matplotlib grid"""
+    """Convert 3 column data to matplotlib grid."""
     if not np.isfinite(x + y + z).all():
         raise ValueError("x, y or z is not finite")
     xi = np.linspace(x.min(), x.max(), resX)
@@ -329,7 +313,7 @@ def scatterplot(
     cbar_name=None,
     **kwargs
 ):
-    """A way to make a nice scatterplot with contours."""
+    """Make a nice scatterplot with contours."""
     if fig is None or ax is None:
         fig, ax = plt.subplots(1, 1, squeeze=True, figsize=(6, 6))
 
@@ -377,8 +361,7 @@ def scatterplot(
 
 
 def find_real_roots_near_zero(poly):
-    """given a polynomial find the two real roots on either side
-    of zero"""
+    """Find the two real roots on either side of zero given a polynomial."""
     # convert array-like to poly
     poly = np.poly1d(poly)
     r = poly.roots
@@ -395,8 +378,7 @@ def find_real_roots_near_zero(poly):
 
 
 def find_real_root_near_zero(poly):
-    """given a polynomial find the two real roots on either side
-    of zero"""
+    """Find single root near zero."""
     # convert array-like to poly
     poly = np.poly1d(poly)
     r = poly.roots

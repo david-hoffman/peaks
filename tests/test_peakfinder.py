@@ -7,7 +7,6 @@ Test suite for `PeakFinder` class
 Copyright (c) 2016, David Hoffman
 """
 
-from nose.tools import *
 from peaks.peakfinder import PeakFinder
 import numpy as np
 from numpy.testing import assert_array_equal, assert_allclose
@@ -33,4 +32,4 @@ class TestPeakFinder(unittest.TestCase):
         pf.thresh = 0.1
         pf.find_blobs()
         found_points = np.sort(pf.blobs[:, :2], 0)
-        assert_array_equal(found_points, np.sort(self.points, 0))
+        assert_allclose(found_points, np.sort(self.points, 0))

@@ -7,7 +7,6 @@ Test suite for `utils.py` of the peaks package
 Copyright (c) 2017, David Hoffman
 """
 
-from nose.tools import *
 from peaks.utils import *
 import numpy as np
 from numpy.testing import assert_array_equal, assert_allclose

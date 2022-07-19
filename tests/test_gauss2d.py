@@ -7,7 +7,7 @@ Test suite for `Gauss2D` class
 Copyright (c) 2016, David Hoffman
 """
 
-from nose.tools import *
+import pytest
 import warnings
 import tifffile as tif
 from peaks.gauss2d import Gauss2D
@@ -43,7 +43,7 @@ class TestGauss2DBasics(unittest.TestCase):
         # check that data is the same
         assert_array_equal(self.noisy_data, self.myg.data)
         # but not the same object
-        assert_is_not(self.noisy_data, self.myg.data)
+        assert not (self.noisy_data is self.myg.data)
 
     def test_estimate_params(self):
         """Test estimate params"""
@@ -98,14 +98,6 @@ class TestGauss2DBasics(unittest.TestCase):
         myg = Gauss2D.gen_model(self.noisy_data, *params)
         assert_allclose(self.raw_data, myg)
 
-    def test_rho(self):
-        """Test that rho is rejected if outside acceptable range"""
-        coefs_full = (12, 20, 70, 20, 30, -1, 2)
-        assert_warns(UserWarning, Gauss2D.model, (self.xx, self.yy), *coefs_full)
-
-        coefs_full = (12, 20, 70, 20, 30, 1, 2)
-        assert_warns(UserWarning, Gauss2D.model, (self.xx, self.yy), *coefs_full)
-
     def test_unequal_range(self):
         """Making sure that a ValueError is thrown for unequal ranges"""
 
@@ -116,8 +108,11 @@ class TestGauss2DBasics(unittest.TestCase):
 
         coefs_full = [12, 20, 70, 20, 30, 0.5, 2]
 
-        assert_raises(RuntimeError, Gauss2D.gauss2D, (self.xx, yy), *coefs_full)
-        assert_raises(RuntimeError, Gauss2D.gauss2D, (xx, self.yy), *coefs_full)
+        with pytest.raises(RuntimeError):
+            Gauss2D.gauss2D((self.xx, yy), *coefs_full)
+
+        with pytest.raises(RuntimeError):
+            Gauss2D.gauss2D((xx, self.yy), *coefs_full)
 
     def test_gauss2D_sym(self):
         """Testing if the symmetrical case is a sub case of the full one"""
@@ -154,8 +149,11 @@ class TestGauss2DBasics(unittest.TestCase):
             assert np.all(model == data)
 
         # now test edge cases
-        assert_raises(ValueError, Gauss2D.model, 1)
-        assert_raises(ValueError, Gauss2D.model, *np.arange(10))
+        with pytest.raises(ValueError):
+            Gauss2D.model(1)
+
+        with pytest.raises(ValueError):
+            Gauss2D.model(*np.arange(10))
 
 
 class TestGauss2DArea(unittest.TestCase):

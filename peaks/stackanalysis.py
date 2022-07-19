@@ -1,6 +1,12 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# stackanalysis.py
 """
-A set of classes for analyzing data stacks that contain punctate data
+A set of classes for analyzing data stacks that contain punctate data.
+
+Copyright (c) 2017, David Hoffman
 """
+
 import itertools as itt
 import multiprocessing as mp
 import os
@@ -8,12 +14,10 @@ import warnings
 
 import numpy as np
 import pandas as pd
-import seaborn as sns
 from dphtools.display import clean_grid, make_grid
 from dphtools.utils import slice_maker
 from loguru import logger
 from matplotlib import pyplot as plt
-from matplotlib.colors import ColorConverter
 from numpy.fft import fft, rfftn
 from scipy import ndimage as ndi
 from scipy.ndimage.filters import median_filter
@@ -27,6 +31,7 @@ showwarning_ = warnings.showwarning
 
 
 def showwarning(message, *args, **kwargs):
+    """Eat warnings and send to loguru."""
     logger.warning(message)
     # showwarning_(message, *args, **kwargs)
 
@@ -40,9 +45,7 @@ warnings.showwarning = showwarning
 
 
 class StackAnalyzer(object):
-    """
-    A parent class for more specialized analysis classes
-    """
+    """A parent class for more specialized analysis classes."""
 
     def __init__(self, stack):
         super().__init__()
@@ -50,16 +53,14 @@ class StackAnalyzer(object):
         self.stack = stack
 
     def findpeaks(self):
-        """
-        A method to find peaks, should have data passed into it, that way child
-        classes can decide how to find peaks initially.
+        """Find peaks.
+
+        Should have data passed into it, that way child classes can decide how to find peaks initially.
         """
         raise NotImplementedError
 
     def fitPeaks(self, fitwidth, nproc=0, par_func=None, quiet=True, **kwargs):
-        """
-        Fit all peaks found by peak finder, has the ability to split the peaks
-        among multiple processors
+        """Fit all peaks found by peak finder, has the ability to split the peaks among multiple processors.
 
         Parameters
         ----------
@@ -117,8 +118,7 @@ class StackAnalyzer(object):
         return fits
 
     def _calc_params(self, nproc=0, par_func=None, quiet=True, **kwargs):
-        """
-        Super class method to calculate parameters for child stackanalyzers
+        """Super class method to calculate parameters for child stackanalyzers.
 
         Allows for multiprocessing, which is much easier in this case because
         there is no need for shared data. That being said we still need to put
@@ -158,55 +158,6 @@ class StackAnalyzer(object):
         params = [param for param in params if param is not None]
         return params
 
-    def drift_plot(self, title=""):
-        """Plot the average change in x0 and y0"""
-        # set up plot
-        fig, (ax0, ax1) = plt.subplots(1, 2)
-        # make holders for coordinates
-        x = []
-        y = []
-        # loop through fits
-        for f in self.fits:
-            # if everything is finite add the coordinates minus bias
-            if np.isfinite(f.x0).all() and np.isfinite(f.y0).all():
-                x.append(f.x0 - f.x0.mean())
-                y.append(f.y0 - f.y0.mean())
-        assert x and y, "x or y is empty"
-        # plot the mean with ci 90% bands
-        sns.tsplot(x, ax=ax0, ci=90, color="b")
-        sns.tsplot(y, ax=ax0, ci=90, color="r")
-        ax0.set_xlabel("Frame #")
-        ax0.set_ylabel("Distance (pixel)")
-        # flatten data
-        xar = np.array(x).ravel()
-        yar = np.array(y).ravel()
-        # determine good histogram bin size
-        nbins = "auto"
-        # plot hists
-        ax1.hist(
-            xar,
-            color=ColorConverter().to_rgba("b", 0.5),
-            normed=True,
-            label="$x$",
-            bins=nbins,
-            histtype="stepfilled",
-            range=(-1, 1),
-        )
-        ax1.hist(
-            yar,
-            color=ColorConverter().to_rgba("r", 0.5),
-            normed=True,
-            label="$y$",
-            bins=nbins,
-            histtype="stepfilled",
-            range=(-1, 1),
-        )
-        ax1.set_xlabel("Distance (pixel)")
-        ax1.legend()
-        fig.suptitle(title)
-        fig.tight_layout()
-        return fig, (ax0, ax1)
-
 
 class PSFStackAnalyzer(StackAnalyzer):
     """A specialized version of StackAnalyzer for PSF stacks."""
@@ -223,6 +174,17 @@ class PSFStackAnalyzer(StackAnalyzer):
         # and finds the slice with the max value before finding peaks.
 
     def fitPeaks(self, fitwidth, nproc=1, **kwargs):
+        """Fit peaks.
+
+        Parameters
+        ----------
+        fitwidth : int
+            The width of the window in which the fit is performed
+        nproc : int
+            The number of subprocesses to use for fitting.
+        kwargs
+            see `_fitPeaks_psf` for more details.
+        """
         return super().fitPeaks(fitwidth, nproc, par_func=_fitPeaks_psf, **kwargs)
 
     def calc_psf_params(self, nproc=0, subrange=slice(None, None, None), **kwargs):
@@ -237,6 +199,7 @@ class PSFStackAnalyzer(StackAnalyzer):
         return self.psf_params
 
     def plot_psf_params(self, feature="z0", **kwargs):
+        """Plot `feature` of PSF parameters as a scatter plot versus x and y locations."""
         psf_params = self.psf_params
         fig, ax = scatterplot(
             psf_params[feature].values, psf_params.y0.values, psf_params.x0.values, **kwargs
@@ -245,8 +208,7 @@ class PSFStackAnalyzer(StackAnalyzer):
         return fig, ax
 
     def diagnostic_fits(self, num=9, trim=None):
-        """Diagnostic, to check if sine fits are good
-        check best and worst SNR"""
+        """Diagnostic, to check if sine fits are good check best and worst SNR."""
         # sort sim_params by SNR
         psf_params = self.psf_params.sort_values("SNR")
         # take the top and bottom
@@ -279,9 +241,7 @@ class PSFStackAnalyzer(StackAnalyzer):
 
 
 class SIMStackAnalyzer(StackAnalyzer):
-    """
-    docstring for SIMStackAnalyser
-    """
+    """docstring for SIMStackAnalyser."""
 
     def __init__(self, stack, norients, nphases, psfwidth=1.68, periods=1, **kwargs):
         # make sure the stack has the right shape
@@ -334,7 +294,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         self.peakfinder.find_blobs()
 
     def fitPeaks(self, fitwidth, nproc=1, **kwargs):
-        """Fit all the found peaks"""
+        """Fit all the found peaks."""
         super().fitPeaks(fitwidth, nproc, par_func=_fitPeaks_sim, **kwargs)
         ni = pd.MultiIndex.from_product(
             [np.arange(self.norients), np.arange(self.nphases)], names=["orientation", "phase"]
@@ -349,7 +309,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         return self.fits
 
     def calc_sim_params(self, nproc=0, modtype="ls", **kwargs):
-        """Calculate all SIM parameters for found peaks"""
+        """Calculate all SIM parameters for found peaks."""
         # pass in the relavent parameters to the superclass
         if modtype == "ls":
             fit_func = calc_mod_ls
@@ -374,7 +334,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         return self.sim_params
 
     def plot_sim_params(self, orientations=None, **kwargs):
-        """Make maps of the modulation depths"""
+        """Make maps of the modulation depths."""
         sim_params = self.sim_params.reset_index()
         norients = self.norients
         fig, ax = plt.subplots(1, norients, figsize=(4 * norients, 4))
@@ -403,9 +363,7 @@ class SIMStackAnalyzer(StackAnalyzer):
         return fig, ax
 
     def plot_sim_hist(self, orientations=None, **kwargs):
-        """
-        Utility to plot a histogram of the SIM parameters
-        """
+        """Plot a histogram of the SIM parameters."""
         # pull sim_params
         sim_params = self.sim_params.reset_index()
         # check if they have any length
@@ -460,8 +418,7 @@ class SIMStackAnalyzer(StackAnalyzer):
                 return fig, axs
 
     def diagnostic_fits(self, num=9):
-        """Diagnostic, to check if sine fits are good
-        check best and worst SNR"""
+        """Check if sine fits are good check best and worst SNR."""
         # sort sim_params by SNR
         sim_params = self.sim_params.sort_values("SNR")
         # take the top and bottom
@@ -498,7 +455,10 @@ class SIMStackAnalyzer(StackAnalyzer):
         return fig, axs
 
     def calc_modmap(self):
-        """WARNING, this is half baked"""
+        """Calculate modulation amplitude mapping.
+
+        NOTE: WARNING, this is half baked
+        """
         nphases = self.nphases
         norients = self.norients
         stack = self.stack
@@ -547,8 +507,7 @@ class SIMStackAnalyzer(StackAnalyzer):
 
 
 def fitPeak(stack, slices, width, startingfit, **kwargs):
-    """
-    Method to fit a peak through the stack.
+    """Fit a peak through the stack.
 
     The method will track the peak through the stack, assuming that moves
     are relatively small from one slice to the next
@@ -657,7 +616,7 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
 
 
 def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
-    """Fitting subfunction for PSFStackAnalyzer"""
+    """Fitting subfunction for PSFStackAnalyzer."""
     # check if we're being dispatched from the multiprocessing pool
     if stack is None:
         stack = _fitPeaks_psf.stack
@@ -723,8 +682,9 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
 
 
 def _fitPeaks_sim(fitwidth, blob, stack, **kwargs):
-    """
-    A sub function that can be dispatched to multiple cores for processing
+    """Fit peaks in SIM data.
+
+    A sub function that can be dispatched to multiple cores for processing.
 
     This function is specific to analyzing SIM data and is designed to fit
     substacks _without_ moving the fit window (i.e. it is assumed that
@@ -774,13 +734,10 @@ def _fitPeaks_sim(fitwidth, blob, stack, **kwargs):
     if np.isfinite(guess_params).all():
 
         def get_params(myslice):
-            """
-            A helper function for the list comprehension below
+            """Take a slice and fit a gaussian to it.
 
-            Takes a slice and fits a gaussian to it, makes sure to update
-            fit window coordinates to full ROI coordinates
+            Makes sure to update fit window coordinates to full ROI coordinates
             """
-
             # set up the fit object
             fit = Gauss2D(myslice)
 
@@ -854,8 +811,7 @@ def _calc_psf_param(fit, subrange=slice(None, None, None), **kwargs):
 
 
 def calc_mod(data, *args):
-    """
-    A utility function to calculate modulation depth
+    """Calculate modulation depth.
 
     This is really a place holder until the linear prediction method
     can be implemented.
@@ -886,7 +842,8 @@ def calc_mod(data, *args):
 
 
 def calc_mod_ls(data, periods, nphases):
-    """
+    """Calculate modulation amplitude using least squares fitting.
+
     Need to change this so that it:
     - first tries to fit only the amplitude and phase
         - if that doesn't work, estimate amp and only fit phase
@@ -921,7 +878,7 @@ def calc_mod_ls(data, periods, nphases):
 
 
 def _estimate_sine_params(data, periods, nphases):
-    """utility to estimate sine params"""
+    """Estimate sine params."""
     pnts = np.arange(3) * periods
     fft_data = rfftn(data)
     g_o, g_a, g_a2 = abs(fft_data[pnts]) / len(data)
@@ -934,7 +891,8 @@ def _estimate_sine_params(data, periods, nphases):
 
 
 def calc_mod3D_ls(data, periods, nphases):
-    """
+    """Calculate modulation amplitude in 3D.
+
     Need to change this so that it:
     - first tries to fit only the amplitude and phase
         - if that doesn't work, estimate amp and only fit phase
@@ -994,8 +952,7 @@ def calc_mod3D_ls(data, periods, nphases):
 
 
 def _calc_sim_param(fit, *, periods, nphases, modtype, fit_func, **kwargs):
-    """Function to calculate the SIM parameters for a found peak
-    i.e. modulation depth"""
+    """Calculate the SIM parameters for a found peak i.e. modulation depth."""
     results = []
     for i, trace in fit.groupby(level="orientation"):
         # pull amplitude values
@@ -1015,7 +972,6 @@ def _calc_sim_param(fit, *, periods, nphases, modtype, fit_func, **kwargs):
 
 
 def _init_func(func, stack, shape):
-    """A utility function that decorates `func` to hold the
-    shared stack as an accessable numpy array-like variable."""
+    """Decorate `func` to hold the shared stack as an accessable numpy array-like variable."""
     func.stack = np.ctypeslib.as_array(stack)
     func.stack.shape = shape
