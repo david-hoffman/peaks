@@ -1,4 +1,5 @@
 numpy
+seaborn
 scipy
 scikit-image
 # sklearn is required for some soon to be deprecated functions.
