@@ -42,7 +42,7 @@ from scipy.spatial import cKDTree
 from skimage._shared.utils import check_nD
 
 # the difference of Gaussians algorithm
-from skimage.draw import circle
+from skimage.draw import ellipse
 from skimage.feature.peak import peak_local_max
 from skimage.util import img_as_float
 
@@ -279,7 +279,7 @@ class PeakFinder(object):
                 radius = blob[2] * 4
             else:
                 radius = diameter
-            rr, cc = circle(blob[0], blob[1], radius, self._data.shape)
+            rr, cc = ellipse(blob[0], blob[1], radius, radius, self._data.shape)
             tolabel[rr, cc] = 1
 
         labels, num_labels = label(tolabel)
