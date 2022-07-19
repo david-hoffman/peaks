@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # gauss2d.py
 """
-Class for generating and fitting 2D Gaussian peaks
+Class for generating and fitting 2D Gaussian peaks.
 
 Supports both least squares and MLE fitting and gaussian peaks
 parameterized by a single width, widths along each axis and widths
@@ -35,6 +35,7 @@ showwarning_ = warnings.showwarning
 
 
 def showwarning(message, *args, **kwargs):
+    """Monkey patch showwarning to funnel to loguru."""
     logger.warning(message)
     # showwarning_(message, *args, **kwargs)
 
@@ -48,9 +49,9 @@ warnings.showwarning = showwarning
 
 
 class Gauss2D(object):
-    """
-    A class that encapsulates experimental data that is best modeled by a 2D
-    gaussian peak. It can estimate model parameters and perform a fit to the
+    """A class that encapsulates experimental data that is best modeled by a 2D gaussian peak.
+
+    It can estimate model parameters and perform a fit to the
     data. Best fit parameters are stored in a dictionary that can be accessed
     by helper functions.
 
@@ -58,8 +59,7 @@ class Gauss2D(object):
     """
 
     def __init__(self, data, **kwargs):
-        """
-        Holds experimental equi-spaced 2D-data best represented by a Gaussian
+        """Represent experimental equi-spaced 2D-data best represented by a Gaussian.
 
         Parameters
         ----------
@@ -73,7 +73,6 @@ class Gauss2D(object):
             A Gauss2D object holding the specified data. All other internal
             variables are internalized to `None`
         """
-
         # Note that we are only passing a reference to the original data here
         # so DO NOT modify this field
         self._data = data
@@ -92,37 +91,28 @@ class Gauss2D(object):
     ########################
     @property
     def data(self):
-        """
-        Internal data
-        """
-
+        """Return copy of internal data."""
         # This attribute should be read-only, which means that it should return
         # a copy of the data not a pointer.
         return self._data.copy()
 
     @property
     def opt_params(self):
-        """
-        Optimized parameters from the fit
-        """
-
+        """Optimized parameters from the fit."""
         # This attribute should be read-only, which means that it should return
         # a copy of the data not a pointer.
         return self._popt.copy()
 
     @property
     def pcov(self):
-        """
-        Covariance matrix of model parameters from the fit
-        """
-
+        """Covariance matrix of model parameters from the fit."""
         # This attribute should be read-only, which means that it should return
         # a copy of the data not a pointer.
         return self._pcov.copy()
 
     @property
     def error(self):
-        """Gives whether there's an error or not."""
+        """Return whether there's an error or not."""
         if self.ier in [1, 2, 3, 4]:
             return False
         else:
@@ -130,7 +120,7 @@ class Gauss2D(object):
 
     @property
     def guess_params(self):
-        """Guessed parameters"""
+        """Guessed parameters."""
         return self._guess_params.copy()
 
     #############################
@@ -138,8 +128,7 @@ class Gauss2D(object):
     #############################
     @classmethod
     def gauss2D(cls, xdata_tuple, amp, mu0, mu1, sigma0, sigma1, rho, offset):
-        """
-        A model function for a bivariate normal distribution (not normalized)
+        """Model function for a bivariate normal distribution (not normalized).
 
         see http://mathworld.wolfram.com/BivariateNormalDistribution.html for
         details
@@ -171,9 +160,10 @@ class Gauss2D(object):
             A matrix of values that represent a 2D Gaussian peak. `g` will have
             the same dimensions as `x0` and `x1`
 
-        Note: Area = 2*amp*np.pi*sigma_x*sigma_y*np.sqrt(1-rho**2)
+        Notes
+        -----
+        Area = 2*amp*np.pi*sigma_x*sigma_y*np.sqrt(1-rho**2)
         """
-
         (x0, x1) = xdata_tuple
 
         if x0.shape != x1.shape:
@@ -198,21 +188,19 @@ class Gauss2D(object):
 
     @classmethod
     def gauss2D_norot(cls, xdata_tuple, amp, x0, y0, sigma_x, sigma_y, offset):
-        """A special case of gauss2D with rho = 0"""
+        """Model a special case of gauss2D with rho = 0."""
         # return the general form with a rho of 0
         return cls.gauss2D(xdata_tuple, amp, x0, y0, sigma_x, sigma_y, 0.0, offset)
 
     @classmethod
     def gauss2D_sym(cls, xdata_tuple, amp, x0, y0, sigma_x, offset):
-        """A special case of gauss2D_norot with sigma_x = sigma_y"""
+        """Model a special case of gauss2D_norot with sigma_x = sigma_y."""
         # return the no rotation form with same sigmas
         return cls.gauss2D_norot(xdata_tuple, amp, x0, y0, sigma_x, sigma_x, offset)
 
     @classmethod
     def model(cls, xdata_tuple, *args):
-        """
-        Chooses the correct model function to use based on the number of
-        arguments passed to it
+        """Choose the correct model function to use based on the number of arguments passed to it.
 
         Parameters
         ----------
@@ -240,7 +228,7 @@ class Gauss2D(object):
 
     @classmethod
     def gauss2D_jac(cls, params, xdata):
-        """Jacobian for full model"""
+        """Jacobian for full model."""
         x0 = xdata[0].ravel()
         x1 = xdata[1].ravel()
         amp, mu0, mu1, sigma0, sigma1, rho, offset = params
@@ -299,7 +287,7 @@ class Gauss2D(object):
 
     @classmethod
     def gauss2D_norot_jac(cls, params, xdata):
-        """Jacobian for no rotation model"""
+        """Jacobian for no rotation model."""
         x = xdata[0].ravel()
         y = xdata[1].ravel()
         amp, x0, y0, sigma_x, sigma_y, offset = params
@@ -316,7 +304,7 @@ class Gauss2D(object):
 
     @classmethod
     def gauss2D_sym_jac(cls, params, xdata):
-        """Jacobian for symmetric model"""
+        """Jacobian for symmetric model."""
         x = xdata[0].ravel()
         y = xdata[1].ravel()
         amp, x0, y0, sigma_x, offset = params
@@ -332,8 +320,7 @@ class Gauss2D(object):
 
     @classmethod
     def model_jac(cls, xdata_tuple, *params):
-        """Chooses the correct model jacobian function to use based on the
-        number of arguments passed to it
+        """Choose the correct model jacobian function to use based on the number of arguments passed to it.
 
         Parameters
         ----------
@@ -361,9 +348,7 @@ class Gauss2D(object):
 
     @classmethod
     def gen_model(cls, data, *args):
-        """
-        A helper method to generate a fit if needed, useful for generating
-        residuals
+        """Generate a fit if needed, useful for generating residuals.
 
         Parameters
         ----------
@@ -383,15 +368,11 @@ class Gauss2D(object):
 
     @property
     def fit_model(self):
-        """
-        Generate the model from this instance, if the fit hasn't been performed
-        yet an error will be raised
-        """
+        """Generate the model from this instance, if the fit hasn't been performed yet an error will be raised."""
         return self.gen_model(self._data, *self._popt)
 
     def area(self, **kwargs):
-        """
-        A function for calculating the area of the model peak
+        """Calculate the area of the model peak.
 
         Area = 2*amp*np.pi*sigma_x*sigma_y*np.sqrt(1-rho**2)
 
@@ -437,9 +418,7 @@ class Gauss2D(object):
         detrenddata=False,
         fittype="ls",
     ):
-        """
-        A function that will optimize the parameters for a 2D Gaussian model
-        using either a least squares or maximum likelihood method
+        r"""Optimize the parameters for a 2D Gaussian model using either a least squares or maximum likelihood method.
 
         Parameters
         ----------
@@ -479,7 +458,6 @@ class Gauss2D(object):
 
         MLE is for poisson noise model while LS is for gaussian noise model.
         """
-
         # Test if we've been provided guess parameters
         # Need to test if the variable is good or not.
         if guess_params is None:
@@ -620,10 +598,7 @@ class Gauss2D(object):
         return self.opt_params
 
     def _check_params(self, popt):
-        """
-        A method that checks if optimized parameters are valid
-        and sets the fit flag
-        """
+        """Check if optimized parameters are valid and set the fit flag."""
         data = self.data
 
         # check to see if the gaussian is bigger than its fitting window by a
@@ -648,12 +623,11 @@ class Gauss2D(object):
         if not (0 < popt[0] < (data.max() - data.min()) * 5):
             self.errmsg = "Amplitude unphysical, amp = {:.3f}," " data range = {:.3f}"
             # cast to float to avoid memmap problems
-            self.errmsg = self.errmsg.format(popt[0], np.float(data.max() - data.min()))
+            self.errmsg = self.errmsg.format(popt[0], float(data.max() - data.min()))
             self.ier = 11
 
     def estimate_params(self, detrenddata=False):
-        """
-        Estimate the parameters that best model the data using it's moments
+        """Estimate the parameters that best model the data using it's moments.
 
         Parameters
         ----------
@@ -677,7 +651,6 @@ class Gauss2D(object):
         -----
         Bias is removed from data using detrend in the util module.
         """
-
         # initialize the parameter array
         params = np.zeros(7)
         # iterate at most 10 times
@@ -699,10 +672,12 @@ class Gauss2D(object):
 
             # calculate model parameters from the moments
             # https://en.wikipedia.org/wiki/Image_moment# Central_moments
-            xbar = M[1, 0] / M[0, 0]
-            ybar = M[0, 1] / M[0, 0]
-            xvar = M[2, 0] / M[0, 0] - xbar**2
-            yvar = M[0, 2] / M[0, 0] - ybar**2
+            ybar = M[1, 0] / M[0, 0]
+            yvar = M[2, 0] / M[0, 0] - ybar**2
+
+            xbar = M[0, 1] / M[0, 0]
+            xvar = M[0, 2] / M[0, 0] - xbar**2
+
             covar = M[1, 1] / M[0, 0] - xbar * ybar
 
             # place the model parameters in the return array
@@ -725,9 +700,7 @@ class Gauss2D(object):
 
     @classmethod
     def _params_dict(cls, params):
-        """
-        Helper function to return a version of params in dictionary form to
-        make the user interface a little more friendly
+        """Return a version of params in dictionary form.
 
         Examples
         --------
@@ -741,7 +714,6 @@ class Gauss2D(object):
         ...     'offset': 7}
         True
         """
-
         keys = ["amp", "x0", "y0", "sigma_x", "sigma_y", "rho", "offset"]
 
         num_params = len(params)
@@ -756,8 +728,7 @@ class Gauss2D(object):
         return {k: p for k, p in zip(keys, params)}
 
     def params_errors_dict(self):
-        """Return a dictionary of errors"""
-
+        """Return a dictionary of errors."""
         keys = ["amp_e", "x0_e", "y0_e", "sigma_x_e", "sigma_y_e", "rho_e", "offset_e"]
 
         # pull the variances of the parameters from the covariance matrix
@@ -778,9 +749,7 @@ class Gauss2D(object):
 
     @classmethod
     def dict_to_params(cls, d):
-        """
-        Helper function to return a version of params in dictionary form
-        to make the user interface a little more friendly
+        """Return a version of params in dictionary form.
 
         >>> Gauss2D.dict_to_params({
         ...     'amp': 1,
@@ -803,20 +772,24 @@ class Gauss2D(object):
         return np.array(values)
 
     def opt_params_dict(self):
+        """Return dictionary of optimal parameters."""
         return self._params_dict(self.opt_params)
 
     def all_params_dict(self):
-        """Return the parameters and there estimated errors all in one dictionary
-        the errors will have the same key plus a '_e'"""
+        """Return the parameters and their estimated errors all in one dictionary.
+
+        NOTE: the errors will have the same key plus a '_e'
+        """
         params_dict = self.opt_params_dict()
         params_dict.update(self.params_errors_dict())
         return params_dict
 
     def guess_params_dict(self):
-        """
+        """Return dictionary of guessed parameters.
+
         >>> import numpy as np
         >>> myg = Gauss2D(np.random.randn(10, 10))
-        >>> myg.guess_params = np.array([1, 2, 3, 4, 5, 6, 7])
+        >>> myg._guess_params = np.array([1, 2, 3, 4, 5, 6, 7])
         >>> myg.guess_params_dict() == {
         ...     'amp': 1,
         ...     'x0': 2,
@@ -831,18 +804,16 @@ class Gauss2D(object):
 
 
 class Gauss2Dz(Gauss2D):
-    """
-    A class that encapsulates experimental data that is best modeled by a 2D
-    gaussian peak. It can estimate model parameters and perform a fit to the
-    data. Best fit parameters are stored in a dictionary that can be accessed
-    by helper functions.
+    """A class that encapsulates experimental data that is best modeled by a 2D gaussian peak.
+
+    It can estimate model parameters and perform a fit to the data. Best fit parameters are stored
+    in a dictionary that can be accessed by helper functions.
 
     Right now the class assumes that `data` has constant spacing
     """
 
     def __init__(self, data, poly_coefs_df):
-        """
-        Holds experimental equi-spaced 2D-data best represented by a Gaussian
+        """Hold experimental equi-spaced 2D-data best represented by a Gaussian.
 
         Parameters
         ----------
@@ -858,7 +829,6 @@ class Gauss2Dz(Gauss2D):
             A Gauss2D object holding the specified data. All other internal
             variables are internalized to `None`
         """
-
         # Note that we are only passing a reference to the original data here
         # so DO NOT modify this field
         super().__init__(data)
@@ -872,15 +842,14 @@ class Gauss2Dz(Gauss2D):
 
     @property
     def fit_model(self):
+        """Return the fitted model."""
         yy, xx = np.indices(self.data.shape)
         xdata_tuple = (xx, yy)
         # return model
         return self.model(xdata_tuple, *self._popt)
 
     def model(self, xdata_tuple, amp, x0, y0, z0, offset):
-        """
-        Chooses the correct model function to use based on the number of
-        arguments passed to it
+        """Choose the correct model function to use based on the number of arguments passed to it.
 
         Parameters
         ----------
@@ -899,8 +868,7 @@ class Gauss2Dz(Gauss2D):
         return self.gauss2D_norot(xdata_tuple, *args)
 
     def model_jac(self, xdata_tuple, *params):
-        """Chooses the correct model jacobian function to use based on the
-        number of arguments passed to it
+        """Choose the correct model jacobian function to use based on the number of arguments passed to it.
 
         Parameters
         ----------
@@ -939,6 +907,7 @@ class Gauss2Dz(Gauss2D):
         # return np.delete(cls.gauss2D_jac(new_params, xdata), 5, axis=0)
 
     def area(self, **kwargs):
+        """Return the estimated area of the fitted peak."""
         raise NotImplementedError
 
     def optimize_params(
@@ -951,7 +920,7 @@ class Gauss2Dz(Gauss2D):
         detrenddata=False,
         fittype="ls",
     ):
-
+        """Find the optimal model parameters that fit the input data."""
         # Test if we've been provided guess parameters
         # Need to test if the variable is good or not.
 
@@ -975,10 +944,7 @@ class Gauss2Dz(Gauss2D):
     optimize_params.__doc__ = Gauss2D.optimize_params.__doc__
 
     def _check_params(self, popt):
-        """
-        A method that checks if optimized parameters are valid
-        and sets the fit flag
-        """
+        """Check if optimized parameters are valid and set the fit flag."""
         data = self.data
         # check to see if the amplitude makes sense
         # it must be greater than 0 but it can't be too much larger than the
@@ -990,8 +956,7 @@ class Gauss2Dz(Gauss2D):
             self.ier = 11
 
     def estimate_params(self, detrenddata=False):
-        """
-        Estimate the parameters that best model the data using it's moments
+        """Estimate the parameters that best model the data using it's moments.
 
         Parameters
         ----------
@@ -1035,9 +1000,7 @@ class Gauss2Dz(Gauss2D):
         return params.copy()
 
     def gen_model(self, *args):
-        """
-        A helper method to generate a fit if needed, useful for generating
-        residuals
+        """Generate a fit if needed, useful for generating residuals.
 
         Parameters
         ----------
@@ -1057,9 +1020,7 @@ class Gauss2Dz(Gauss2D):
 
     @classmethod
     def _params_dict(cls, params):
-        """
-        Helper function to return a version of params in dictionary form to
-        make the user interface a little more friendly
+        """Return params in dictionary form.
 
         Examples
         --------
@@ -1073,14 +1034,12 @@ class Gauss2Dz(Gauss2D):
         ...     'offset': 7}
         True
         """
-
         keys = ["amp", "x0", "y0", "z0", "offset"]
 
         return {k: p for k, p in zip(keys, params)}
 
     def params_errors_dict(self):
-        """Return a dictionary of errors"""
-
+        """Return a dictionary of errors."""
         keys = ["amp_e", "x0_e", "y0_e", "z0_e", "offset_e"]
 
         # pull the variances of the parameters from the covariance matrix
@@ -1092,9 +1051,7 @@ class Gauss2Dz(Gauss2D):
 
     @classmethod
     def dict_to_params(cls, d):
-        """
-        Helper function to return a version of params in dictionary form
-        to make the user interface a little more friendly
+        """Return a version of params in dictionary form.
 
         >>> Gauss2D.dict_to_params({
         ...     'amp': 1,
