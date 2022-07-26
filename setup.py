@@ -25,7 +25,7 @@ setuptools.setup(
     author="David Hoffman",
     author_email="dave.p.hoffman@gmail.com",
     url="https://github.com/david-hoffman/peaks",
-    description="A python library for simulating and analyzing microscope point spread functions (PSFs)",
+    description="Package for finding and analyzing puncta in optical images.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     license="Apache V2.0",

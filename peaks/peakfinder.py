@@ -119,7 +119,10 @@ class PeakFinder(object):
         # User should not be able to modify this, so return copy
         # sort blobs by the max amp value, descending
         blobs = self._blobs
-        return blobs[blobs[:, -1].argsort()][::-1]
+        # make sure blobs are found before sorting
+        if len(blobs) > 0:
+            return blobs[blobs[:, -1].argsort()][::-1]
+        return blobs
 
     @blobs.setter
     def blobs(self, value):
