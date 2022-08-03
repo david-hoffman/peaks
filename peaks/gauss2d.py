@@ -29,7 +29,7 @@ from scipy.optimize import OptimizeWarning
 from skimage.measure import moments
 
 # need to detrend data before estimating parameters
-from .utils import detrend, find_real_root_near_zero
+from .utils import find_real_root_near_zero
 
 showwarning_ = warnings.showwarning
 
@@ -415,7 +415,6 @@ class Gauss2D(object):
         quiet=False,
         bounds=None,
         checkparams=True,
-        detrenddata=False,
         fittype="ls",
     ):
         r"""Optimize the parameters for a 2D Gaussian model using either a least squares or maximum likelihood method.
@@ -441,9 +440,6 @@ class Gauss2D(object):
         checkparams : bool
             Checks the parameters for validity after the fit, maybe replaced
             in the future by more intelligent default bounding
-        detrenddata : bool
-            Determines if the data should be detrended before parameter
-            estimation, may be removed in the future.
 
         Returns
         -------
@@ -462,7 +458,7 @@ class Gauss2D(object):
         # Need to test if the variable is good or not.
         if guess_params is None:
             # if not we generate them
-            guess_params = self.estimate_params(detrenddata=detrenddata)
+            guess_params = self.estimate_params()
             if modeltype.lower() == "sym":
                 guess_params = np.delete(guess_params, (4, 5))
             elif modeltype.lower() == "norot":
@@ -626,15 +622,8 @@ class Gauss2D(object):
             self.errmsg = self.errmsg.format(popt[0], float(data.max() - data.min()))
             self.ier = 11
 
-    def estimate_params(self, detrenddata=False):
+    def estimate_params(self):
         """Estimate the parameters that best model the data using it's moments.
-
-        Parameters
-        ----------
-        detrenddata : bool
-            a keyword that determines whether data should be detrended first.
-            Detrending takes *much* longer than not. Probably only useful for
-            large fields of view.
 
         Returns
         -------
@@ -646,26 +635,15 @@ class Gauss2D(object):
             params[4] = sigma_y
             params[5] = rho
             params[6] = offset
-
-        Notes
-        -----
-        Bias is removed from data using detrend in the util module.
         """
         # initialize the parameter array
         params = np.zeros(7)
         # iterate at most 10 times
         for i in range(10):
             # detrend data
-            if detrenddata:
-                # only try to remove a plane, any more should be done before
-                # passing object instatiation.
-                data, bg = detrend(self._data.copy(), degree=1)
-                offset = bg.mean()
-                amp = data.max()
-            else:
-                data = self._data.astype(float)
-                offset = data.min()
-                amp = data.max() - offset
+            data = self._data.astype(float)
+            offset = data.min()
+            amp = data.max() - offset
 
             # calculate the moments up to second order
             M = moments(data, 2)
@@ -687,9 +665,8 @@ class Gauss2D(object):
             params[5] = covar / np.sqrt(np.abs(xvar * yvar))
             params[6] = offset
 
-            if abs(params[5]) < 1 or not detrenddata:
-                # if the rho is valid or we're not detrending data,
-                # break the loop.
+            if abs(params[5]) < 1:
+                # if the rho is valid break the loop.
                 break
 
         # save estimate for later use
@@ -917,7 +894,6 @@ class Gauss2Dz(Gauss2D):
         quiet=False,
         bounds=None,
         checkparams=True,
-        detrenddata=False,
         fittype="ls",
     ):
         """Find the optimal model parameters that fit the input data."""
@@ -926,7 +902,7 @@ class Gauss2Dz(Gauss2D):
 
         if guess_params is None:
             # if not we generate them
-            guess_params = self.estimate_params(detrenddata=detrenddata)
+            guess_params = self.estimate_params()
 
         # handle the case where the user passes a dictionary of values.
         if isinstance(guess_params, dict):
@@ -937,7 +913,6 @@ class Gauss2Dz(Gauss2D):
             quiet=quiet,
             bounds=bounds,
             checkparams=checkparams,
-            detrenddata=detrenddata,
             fittype=fittype,
         )
 
@@ -955,15 +930,8 @@ class Gauss2Dz(Gauss2D):
             self.errmsg = self.errmsg.format(popt[0], np.float(data.max() - data.min()))
             self.ier = 11
 
-    def estimate_params(self, detrenddata=False):
+    def estimate_params(self):
         """Estimate the parameters that best model the data using it's moments.
-
-        Parameters
-        ----------
-        detrenddata : bool
-            a keyword that determines whether data should be detrended first.
-            Detrending takes *much* longer than not. Probably only useful for
-            large fields of view.
 
         Returns
         -------
@@ -973,12 +941,8 @@ class Gauss2Dz(Gauss2D):
             params[2] = y0
             params[3] = z0
             params[4] = offset
-
-        Notes
-        -----
-        Bias is removed from data using detrend in the util module.
         """
-        gauss2d_params = super().estimate_params(detrenddata)
+        gauss2d_params = super().estimate_params()
 
         amp, x0, y0, sigma_x, sigma_y, rho, offset = gauss2d_params
 
