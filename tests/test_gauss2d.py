@@ -7,15 +7,18 @@ Test suite for `Gauss2D` class
 Copyright (c) 2016, David Hoffman
 """
 
-import pytest
-import warnings
-import tifffile as tif
-from peaks.gauss2d import Gauss2D
 import os
-import numpy as np
-from numpy.testing import assert_array_equal, assert_allclose
 import unittest
+import warnings
 from itertools import product
+
+import numpy as np
+import pytest
+import tifffile as tif
+from numpy.testing import assert_allclose, assert_array_equal
+from peaks.gauss2d import Gauss2D
+
+RNG = np.random.default_rng(12345)
 
 
 class TestGauss2DBasics(unittest.TestCase):
@@ -207,13 +210,13 @@ def _self_consistency_test_factory(guess, modeltype, fittype, snr):
         if snr:
             if fittype == "ls":
                 amp = coefs[0]
-                noise_data = (amp / snr) * np.random.randn(*data.shape)
+                noise_data = (amp / snr) * RNG.normal(size=data.shape)
                 noisy_data = data + noise_data
                 # this is a heuristic and should be replaced with a better
                 # reasone parameter
                 rtol = 1 / snr
             elif fittype == "mle":
-                noisy_data = np.random.poisson(data)
+                noisy_data = RNG.poisson(data)
                 rtol = 1 / coefs[0]
         else:
             noisy_data = data
@@ -315,17 +318,17 @@ class TestGauss2DSelfConsistencyRand(_TestGauss2DSelfConsistencyBase):
 
     def _make_coefs(self):
         """"""
-        ny, nx = np.random.randint(10, 100, 2)
+        ny, nx = RNG.integers(10, 100, size=2)
         # make grid
         self.yy, self.xx = np.indices((ny, nx))
         # choose center
-        y0, x0 = (np.random.random(2) * 0.9 + 0.10) * (ny, nx)
+        y0, x0 = (RNG.uniform(size=2) * 0.9 + 0.10) * (ny, nx)
         # choose sigmas
-        sigma_y, sigma_x = (0.1 * np.random.random(2) + 0.1) * (ny, nx)
+        sigma_y, sigma_x = (0.1 * RNG.uniform(size=2) + 0.1) * (ny, nx)
         # choose amp
-        amp = np.random.random() * 100 + 10
+        amp = RNG.uniform() * 100 + 10
         # choose rho
-        rho = (np.random.random() * 2 - 1) * 0.99
+        rho = (RNG.uniform() * 2 - 1) * 0.99
         # choose offset
-        offset = np.random.random() * 100
+        offset = RNG.uniform() * 100
         return amp, x0, y0, sigma_x, sigma_y, rho, offset

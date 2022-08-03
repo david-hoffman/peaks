@@ -7,20 +7,23 @@ Test suite for `PeakFinder` class
 Copyright (c) 2016, David Hoffman
 """
 
-from peaks.peakfinder import PeakFinder
-import numpy as np
-from numpy.testing import assert_array_equal, assert_allclose
 import unittest
+
+import numpy as np
+from numpy.testing import assert_allclose
+from peaks.peakfinder import PeakFinder
 
 
 class TestPeakFinder(unittest.TestCase):
     """A test case for the PeakFinder class"""
 
+    RNG = np.random.default_rng(12345)
+
     def setUp(self):
         """Set up our variables"""
         shape = (256, 512)
         data = np.zeros(shape)
-        points = self.points = (np.random.rand(10, 2) * shape).astype(int)
+        points = self.points = (self.RNG.uniform(size=(10, 2)) * shape).astype(int)
         data[points.T[0], points.T[1]] = 1
         assert data.sum() == 10, "Something wrong with data generation," " points = {}".format(
             points

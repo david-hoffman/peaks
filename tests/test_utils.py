@@ -7,10 +7,13 @@ Test suite for `utils.py` of the peaks package
 Copyright (c) 2017, David Hoffman
 """
 
-from peaks.utils import *
-import numpy as np
-from numpy.testing import assert_array_equal, assert_allclose
 import unittest
+
+import numpy as np
+from numpy.testing import assert_allclose
+from peaks.utils import *
+
+RNG = np.random.default_rng(12345)
 
 
 def fixed_signs(popt1, popt2):
@@ -26,33 +29,30 @@ def fixed_signs(popt1, popt2):
 
 
 class TestSineFit(unittest.TestCase):
-    """A test case for the PeakFinder class"""
+    """A test case for the PeakFinder class."""
 
     def setUp(self):
-        """Set up our variables"""
-        shape = np.random.randint(5, 50)
-        periods = self.periods = np.random.rand() * 3 + 1
+        """Set up our variables."""
+        shape = RNG.integers(5, 50)
+        periods = self.periods = RNG.normal() * 3
         freq = periods / shape
-        amp = np.random.randn()
-        offset = np.random.randn()
-        phase = (np.random.rand() - 1 / 2) * 5 / 3 * np.pi
+        amp = RNG.normal()
+        offset = RNG.normal()
+        phase = (RNG.normal() - 1 / 2) * 5 / 3 * np.pi
         p_gt = self.p_gt = (amp, freq, phase, offset)
         x = self.x = np.arange(shape)
         self.data = sine(x, *p_gt)
 
     def test_self_consistency_no_noise(self):
         """See if we can fit noiseless data right"""
-        print(np.array(self.p_gt))
         popt, pcov = sine_fit(self.data, self.periods)
         print(popt)
         assert_allclose(*fixed_signs(self.p_gt, popt), 1e-4)
 
     def test_self_consistency_noise(self):
-        """See if we can fit noiseless data right"""
+        """See if we can fit noisey data right"""
         # test with SNR = 100
-        print(np.array(self.p_gt))
-        SNR = self.p_gt[0] / 100
-        noisy_data = self.data + SNR * np.random.randn(*self.data.shape)
+        SNR = self.p_gt[0] / 9
+        noisy_data = self.data + SNR * RNG.normal(size=self.data.shape)
         popt, pcov = sine_fit(noisy_data, self.periods)
-        print(popt)
         assert_allclose(*fixed_signs(self.p_gt, popt), 5e-1)
