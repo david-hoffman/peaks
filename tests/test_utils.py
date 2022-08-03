@@ -11,6 +11,7 @@ import unittest
 
 import numpy as np
 from numpy.testing import assert_allclose
+
 from peaks.utils import *
 
 RNG = np.random.default_rng(12345)

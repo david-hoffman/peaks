@@ -7,11 +7,11 @@ Utility functions for the `peaks` package.
 Copyright (c) 2017, David Hoffman
 """
 import numpy as np
-from scipy.optimize import curve_fit
 from matplotlib import pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from scipy.interpolate import griddata
 from numpy.fft import rfftn
+from scipy.interpolate import griddata
+from scipy.optimize import curve_fit
 
 
 def nmoment(x, counts, c, n):

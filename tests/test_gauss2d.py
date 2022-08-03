@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 import tifffile as tif
 from numpy.testing import assert_allclose, assert_array_equal
+
 from peaks.gauss2d import Gauss2D
 
 RNG = np.random.default_rng(12345)

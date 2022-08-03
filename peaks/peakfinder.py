@@ -13,6 +13,7 @@ Copyright (c) 2016, David Hoffman
 
 # need math log too, for arbitrary base
 from math import log
+
 import dask
 
 # we need a few extra features from matplot lib
@@ -23,10 +24,12 @@ import numpy as np
 
 # need pandas for better data containers
 import pandas as pd
+from dask.diagnostics import ProgressBar
 
 # plotting
 from dphtools.display import display_grid
 from dphtools.utils import fft_gaussian_filter, mode, slice_maker
+from loguru import logger
 
 # ndimage imports
 from scipy.ndimage import (
@@ -50,8 +53,6 @@ from skimage.util import img_as_float
 
 # import our 2D gaussian fitting class
 from .gauss2d import Gauss2D, Gauss2Dz
-from loguru import logger
-from dask.diagnostics import ProgressBar
 
 
 class PeakFinder(object):
