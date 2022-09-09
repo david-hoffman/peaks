@@ -1,0 +1,39 @@
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - "*.*.*" # Push events to matching semver versioning
+
+name: Create Release
+
+jobs:
+  build:
+    name: Create Release
+    runs-on: ubuntu-latest
+    if: github.repository == 'david-hoffman/peaks'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - name: Install Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install setuptools wheel
+      - name: build
+        run: |
+          python setup.py sdist bdist_wheel
+      - name: Publish distribution 📦 to Test PyPI
+        if: success() && startsWith(github.ref, 'refs/tags')
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          password: ${{ secrets.TESTPYPI_TOKEN }}
+          repository_url: https://test.pypi.org/legacy/
+      - name: Publish distribution 📦 to PyPI
+        # if the test build works, try a real build if rc isn't part of the name
+        if: success() && !contains(github.ref, 'rc')
+        uses: pypa/gh-action-pypi-publish@master
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}

@@ -1,0 +1,43 @@
+# conda config --set anaconda_upload yes
+# conda build --python 3.8 conda.recipe/
+
+{% set setupdata = load_setup_py_data() %}
+
+package:
+  name: peaks
+  version: {{ setupdata['version'] }}
+
+source:
+  path: ../
+
+build:
+  string: {{ GIT_BUILD_STR }}
+  noarch: python
+  number: {{ GIT_DESCRIBE_NUMBER }}
+  script: pip install .
+
+requirements:
+  build:
+    - python
+    - pip
+  run:
+    - python
+    - numpy
+    - scipy
+    - scikit-image
+    - matplotlib
+    - tifffile
+    - dphtools
+    - loguru
+    - dask
+    - pandas
+
+test:
+  imports:
+    - peaks
+
+about:
+  home: {{ setupdata['url'] }}
+  license: Apache License Version 2.0
+  license_file: LICENSE
+  summary: {{ setupdata['description'] }}
