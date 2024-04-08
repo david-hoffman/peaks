@@ -892,7 +892,6 @@ class SpectralPeakFinder(object):
         # self._plot_peaks_lines()
 
         for peak in peaks:
-
             # need to ensure a reasonable ratio
             ratio = nz / nx
             if ratio < 0.05:

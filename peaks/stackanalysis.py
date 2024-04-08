@@ -550,7 +550,6 @@ def fitPeak(stack, slices, width, startingfit, **kwargs):
         raise ValueError("Dictionary is too big {}".format(popt_d))
 
     for s in slices:
-
         # make the slice
         try:
             myslice = slice_maker((y0, x0), width)
@@ -647,7 +646,6 @@ def _fitPeaks_psf(fitwidth, blob, stack, **kwargs):
     max_z.optimize_params(**kwargs)
 
     if np.isfinite(max_z.opt_params).all():
-
         # recenter the coordinates and add a slice variable
         opt_params = max_z.all_params_dict()
         opt_params["slice"] = my_max

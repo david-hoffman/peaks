@@ -13,12 +13,10 @@ from loguru import logger
 
 logger.disable(__name__)
 
-from . import _version
 from .gauss2d import Gauss2D
 from .peakfinder import PeakFinder
 from .stackanalysis import PSFStackAnalyzer, SIMStackAnalyzer
 
-__version__ = _version.get_versions()["version"]
-
 from . import _version
-__version__ = _version.get_versions()['version']
+
+__version__ = _version.get_versions()["version"]
